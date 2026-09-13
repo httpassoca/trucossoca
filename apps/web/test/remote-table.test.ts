@@ -25,7 +25,7 @@ type Member = RoomSnapshot['members'][number];
 const human = (id: string, nickname: string, seat: Member['seat'] = null): Member => ({ id, nickname, connected: true, seat, bot: false, botControlled: false, idle: 0 });
 const bot = (id: string, nickname: string, seat: Member['seat']): Member => ({ id, nickname, connected: true, seat, bot: true, botControlled: false, idle: 0 });
 const lobby = (members: Member[], you: string | null, patch: Partial<RoomSnapshot> = {}): RoomSnapshot =>
-  ({ code: 'ABCD', phase: 'lobby', members, you, teams: ['Nós', 'Eles'], rules: defaultRules, ghostsSeeCards: true, game: null, ...patch });
+  ({ code: 'ABCD', phase: 'lobby', members, you, teams: ['Nós', 'Eles'], rules: defaultRules, ghostsSeeCards: true, scenery: 'bar', game: null, ...patch });
 
 /** Uma mesa em curso como o servidor a mandaria para quem senta na cadeira 1 (ou para um fantasma). */
 function playing(viewer: 1 | 'all') {
@@ -88,10 +88,10 @@ describe('RemoteTable: lobby', () => {
     const { table, last } = setup();
     table.connect(); last().open();
     const rules = { ...defaultRules, allowCovered: false };
-    table.takeSeat(1); table.leaveSeat(); table.renameTeam(0, 'Os Bão'); table.setRules(rules); table.setGhostsSeeCards(false); table.start();
+    table.takeSeat(1); table.leaveSeat(); table.renameTeam(0, 'Os Bão'); table.setRules(rules); table.setGhostsSeeCards(false); table.setScenery('graveyard'); table.start();
     expect(last().sent).toEqual([
       { type: 'takeSeat', team: 1 }, { type: 'leaveSeat' }, { type: 'renameTeam', team: 0, name: 'Os Bão' },
-      { type: 'rules', rules }, { type: 'ghostsSeeCards', on: false }, { type: 'start' },
+      { type: 'rules', rules }, { type: 'ghostsSeeCards', on: false }, { type: 'scenery', scenery: 'graveyard' }, { type: 'start' },
     ]);
   });
 

@@ -31,6 +31,12 @@ describe('parseClientMessage', () => {
     expect(parseClientMessage(JSON.stringify({ type: 'renameTeam', team: 0, name: 'Nós' }))).toEqual({ type: 'renameTeam', team: 0, name: 'Nós' });
     expect(parseClientMessage(JSON.stringify({ type: 'ghostsSeeCards', on: false }))).toEqual({ type: 'ghostsSeeCards', on: false });
     expect(parseClientMessage(JSON.stringify({ type: 'start' }))).toEqual({ type: 'start' });
+    expect(parseClientMessage(JSON.stringify({ type: 'scenery', scenery: 'graveyard' }))).toEqual({ type: 'scenery', scenery: 'graveyard' });
+  });
+
+  test('cenário fora da lista é rejeitado', () => {
+    expect(parseClientMessage(JSON.stringify({ type: 'scenery', scenery: 'lua' }))).toBeNull();
+    expect(parseClientMessage(JSON.stringify({ type: 'scenery' }))).toBeNull();
   });
 
   test('dupla fora de 0/1, nome de dupla comprido demais ou toggle sem booleano são rejeitados', () => {
@@ -87,7 +93,9 @@ describe('parseClientMessage: fantasmas', () => {
   test('presença leva posição no chão e olhar, todos números finitos', () => {
     expect(parseClientMessage(JSON.stringify({ type: 'presence', presence: { x: 1.5, y: 0.4, z: -2, yaw: 0.3, pitch: -0.1 } }))).toEqual({ type: 'presence', presence: { x: 1.5, y: 0.4, z: -2, yaw: 0.3, pitch: -0.1 } });
     expect(parseClientMessage(JSON.stringify({ type: 'presence', presence: { x: 1, z: 2, yaw: 0, pitch: 0 } }))).toBeNull();
-    expect(parseClientMessage(JSON.stringify({ type: 'presence', presence: { x: 1, y: -1, z: 2, yaw: 0, pitch: 0 } }))).toBeNull();
+    expect(parseClientMessage(JSON.stringify({ type: 'presence', presence: { x: 1, y: -2, z: 2, yaw: 0, pitch: 0 } }))).toBeNull();
+    // um degrau abaixo do chão (a rua de um cenário) passa
+    expect(parseClientMessage(JSON.stringify({ type: 'presence', presence: { x: 1, y: -0.08, z: 2, yaw: 0, pitch: 0 } }))).not.toBeNull();
     expect(parseClientMessage(JSON.stringify({ type: 'presence', presence: { x: 1, y: 0, z: 2, yaw: 0 } }))).toBeNull();
     expect(parseClientMessage(JSON.stringify({ type: 'presence', presence: { x: '1', y: 0, z: 2, yaw: 0, pitch: 0 } }))).toBeNull();
     expect(parseClientMessage(JSON.stringify({ type: 'presence', presence: { x: 1e9, y: 0, z: 2, yaw: 0, pitch: 0 } }))).toBeNull();

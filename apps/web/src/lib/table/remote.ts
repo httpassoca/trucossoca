@@ -1,4 +1,4 @@
-import { CLOSE_REPLACED, CLOSE_ROOM_ENDED, CLOSE_ROOM_NOT_FOUND, DEFAULT_TEAM_NAMES, PING_INTERVAL, type ClientMessage, type Presence, type RoomSnapshot, type ServerMessage } from '@truco/protocol';
+import { CLOSE_REPLACED, CLOSE_ROOM_ENDED, CLOSE_ROOM_NOT_FOUND, DEFAULT_SCENERY, DEFAULT_TEAM_NAMES, PING_INTERVAL, type ClientMessage, type Presence, type RoomSnapshot, type SceneryId, type ServerMessage } from '@truco/protocol';
 import { canRaise, coverAllowed, createGame, viewFor, type CardId, type DezAction, type GameEvent, type GameView, type RespondAction, type Rules, type Seat, type Team } from '@truco/rules';
 import { realClock, type Clock } from './clock';
 import { actingFor, type GhostView, type SeatView, type Table, type TableListener, type TableSnapshot } from './table';
@@ -119,6 +119,7 @@ export class RemoteTable implements Table {
   renameTeam(team: Team, name: string) { this.send({ type: 'renameTeam', team, name }); }
   setRules(rules: Rules) { this.send({ type: 'rules', rules }); }
   setGhostsSeeCards(on: boolean) { this.send({ type: 'ghostsSeeCards', on }); }
+  setScenery(scenery: SceneryId) { this.send({ type: 'scenery', scenery }); }
   start() { this.send({ type: 'start' }); }
   /** passa a cadeira de outra pessoa sentada, parada há `IDLE_HANDOFF`, a um bot (o servidor confere) */
   handToBot(member: string) { this.send({ type: 'handToBot', member }); }
@@ -200,6 +201,7 @@ export class RemoteTable implements Table {
     return {
       game, seat, seats, teams: room ? [...room.teams] : [...DEFAULT_TEAM_NAMES], ghosts, acting: actingFor(game, seat), coverNext: this.coverNext,
       canRaise: seat !== null && canRaise(game, seat), canCover: coverAllowed(game), rulesEditable: false, restart: seat !== null && game.over ? 'rematch' : null,
+      scenery: room?.scenery ?? DEFAULT_SCENERY,
     };
   }
 

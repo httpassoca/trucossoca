@@ -19,6 +19,10 @@ export const IDLE_HANDOFF = 60_000;
 export const PRESENCE_INTERVAL = 100;
 /** Até onde uma presença pode estar do centro da mesa, em metros, em cada eixo; e o máximo de um ângulo, em radianos (o cliente manda entre -π e π, ou perto). */
 const PRESENCE_RANGE = 30, PRESENCE_HEIGHT_RANGE = 10, PRESENCE_ANGLE_RANGE = 4 * Math.PI;
+/** Cenários: o lugar ao redor da mesa, escolhido por sala no lobby; o bar de esquina é o padrão. */
+export type SceneryId = 'bar' | 'graveyard';
+export const SCENERIES: readonly SceneryId[] = ['bar', 'graveyard'];
+export const DEFAULT_SCENERY: SceneryId = 'bar';
 /** Id público de membro: `m` e um número. */
 const MEMBER_ID_MAX = 16;
 
@@ -39,6 +43,8 @@ export type ClientMessage =
   | { type: 'renameTeam'; team: Team; name: string }
   | { type: 'rules'; rules: Rules }
   | { type: 'ghostsSeeCards'; on: boolean }
+  /** troca o cenário da sala; só no lobby */
+  | { type: 'scenery'; scenery: SceneryId }
   | { type: 'start' }
   // jogadas: só de quem está sentado, durante a partida; o servidor aplica com os guardas do motor
   | { type: 'play'; id: CardId; covered: boolean }
@@ -97,6 +103,8 @@ export interface RoomSnapshot {
   /** regras da sala: as da próxima partida no lobby, as em vigor durante a partida */
   rules: Rules;
   ghostsSeeCards: boolean;
+  /** o cenário da sala: trancado durante a partida como as regras */
+  scenery: SceneryId;
   /** a partida como esta pessoa a vê (só as próprias cartas); null no lobby */
   game: GameView | null;
 }
@@ -139,6 +147,8 @@ export function parseClientMessage(raw: unknown): ClientMessage | null {
       return { type: 'renameTeam', team: m.team, name: m.name };
     case 'ghostsSeeCards':
       return typeof m.on === 'boolean' ? { type: 'ghostsSeeCards', on: m.on } : null;
+    case 'scenery':
+      return isScenery(m.scenery) ? { type: 'scenery', scenery: m.scenery } : null;
     case 'rules': {
       const rules = parseRules(m.rules);
       return rules ? { type: 'rules', rules } : null;
@@ -148,15 +158,16 @@ export function parseClientMessage(raw: unknown): ClientMessage | null {
 }
 
 const isTeam = (v: unknown): v is Team => v === 0 || v === 1;
+const isScenery = (v: unknown): v is SceneryId => typeof v === 'string' && (SCENERIES as string[]).includes(v);
 const isSeat = (v: unknown): v is Seat => v === 0 || v === 1 || v === 2 || v === 3;
 const isNum = (v: unknown, range: number): v is number => typeof v === 'number' && Number.isFinite(v) && Math.abs(v) <= range;
 
-/** Presença vinda do cliente: cinco números finitos, a posição dentro da mesa (a altura, entre o chão e um pulo). */
+/** Presença vinda do cliente: cinco números finitos, a posição dentro da mesa (a altura, entre um degrau abaixo do chão e um pulo). */
 function parsePresence(raw: unknown): Presence | null {
   if (!raw || typeof raw !== 'object') return null;
   const p = raw as Record<string, unknown>;
   if (!isNum(p.x, PRESENCE_RANGE) || !isNum(p.z, PRESENCE_RANGE) || !isNum(p.yaw, PRESENCE_ANGLE_RANGE) || !isNum(p.pitch, PRESENCE_ANGLE_RANGE)) return null;
-  if (!isNum(p.y, PRESENCE_HEIGHT_RANGE) || p.y < 0) return null;
+  if (!isNum(p.y, PRESENCE_HEIGHT_RANGE) || p.y < -1) return null;
   return { x: p.x, y: p.y, z: p.z, yaw: p.yaw, pitch: p.pitch };
 }
 const isCardId = (v: unknown): v is CardId => typeof v === 'string' && v.length === 2 && (RANKS as string[]).includes(v[0]) && v[1] in SUITS;

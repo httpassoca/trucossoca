@@ -1,4 +1,4 @@
-import { DEFAULT_TEAM_NAMES, PRESENCE_INTERVAL, type Presence } from '@truco/protocol';
+import { DEFAULT_SCENERY, DEFAULT_TEAM_NAMES, PRESENCE_INTERVAL, type Presence, type SceneryId } from '@truco/protocol';
 import { createGame, responderSeat, teamOf, viewFor, type CardId, type DezAction, type GameEvent, type GameReadable, type GameView, type RespondAction, type Seat } from '@truco/rules';
 
 /** Quem ocupa cada cadeira, como a interface mostra: `bot` é um bot de verdade; `botControlled`, uma pessoa por quem um bot joga enquanto ela está ausente. */
@@ -35,6 +35,8 @@ export interface TableSnapshot {
   rulesEditable: boolean;
   /** o que `newGame` faz aqui: recomeça na hora (offline), pede revanche e volta ao lobby (online, no fim de jogo), ou nada */
   restart: 'newGame' | 'rematch' | null;
+  /** o cenário ao redor da mesa; online vem da sala, offline é lembrado no navegador */
+  scenery: SceneryId;
 }
 
 /** Chamado depois de cada mudança com o snapshot novo e os eventos que a causaram (vazio se só a intenção mudou). */
@@ -56,6 +58,8 @@ export interface Table {
   setPresence(p: Presence): void;
   /** a presença mais recente de um fantasma (por id) ou de quem senta numa cadeira; undefined se nunca chegou. Lida por quadro, fora do snapshot */
   presenceOf(who: Seat | string): Presence | undefined;
+  /** troca o cenário: offline na hora; online pede à sala (só vale no lobby) */
+  setScenery(scenery: SceneryId): void;
 }
 
 /**
@@ -74,6 +78,6 @@ export function actingFor(g: GameReadable, seat: Seat | null): Seat | -1 {
 export function emptySnapshot(): TableSnapshot {
   return {
     game: viewFor(createGame(), 'all'), seat: null, seats: [0, 1, 2, 3].map(() => ({ name: '', bot: false, botControlled: false })), teams: [...DEFAULT_TEAM_NAMES], ghosts: [],
-    acting: -1, coverNext: false, canRaise: false, canCover: false, rulesEditable: false, restart: null,
+    acting: -1, coverNext: false, canRaise: false, canCover: false, rulesEditable: false, restart: null, scenery: DEFAULT_SCENERY,
   };
 }

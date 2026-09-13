@@ -2,6 +2,7 @@ import type { Seat } from '@truco/rules';
 import type { Presence } from '../table/table';
 import { seatAngle, seatDir, SEAT_R, TABLE_R, TABLE_TOP } from './builders';
 import { BUDDY_EYE, BUDDY_EYE_FORWARD, STOOL_H } from './buddy/model';
+import { SEAT_FOOT_R } from './scenery/kit';
 
 /** Olhar em primeira pessoa: yaw/pitch alvo (mouse) e suavizado (frame). Sentada, relativos à cadeira; de pé ou fantasma, absolutos. */
 export const look = { yaw: 0, pitch: 0, tyaw: 0, tpitch: 0 };
@@ -21,7 +22,9 @@ export const stance = { standing: false };
 export const walk = { x: 0, y: 0, z: 0, vy: 0, airborne: false, keys: new Set<string>() };
 export const MOVE_KEYS = new Set(['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight']);
 /** Velocidade (m/s), onde um fantasma fica de pé atrás de uma cadeira, até onde pode ir e a que distância da mesa esbarra. */
-export const WALK_SPEED = 2.2, GHOST_STAND_R = SEAT_R + 1.1, WALK_MAX_R = 6, WALK_MIN_R = TABLE_R + 0.45;
+export const WALK_SPEED = 2.2, GHOST_STAND_R = SEAT_R + 1.1, WALK_MIN_R = TABLE_R + 0.45;
+/** Até onde se anda e a altura do chão fora da mesa e das cadeiras: o cenário põe a cerca e o chão dele aqui. */
+export const walkBounds = { maxR: 6.4, floorAt: (_x: number, _z: number) => 0 };
 /** Pulo: gravidade e impulso; sobe perto de um metro, o bastante para subir na mesa. */
 export const GRAVITY = 16, JUMP_V = 5.6;
 /** A que distância da própria cadeira dá para sentar de novo. */
@@ -42,12 +45,12 @@ export function standBehind(seat: Seat) {
   look.yaw = look.tyaw = s.yaw; look.pitch = look.tpitch = s.pitch;
 }
 
-/** O chão onde se pisa em (x, z): o tampo da mesa dentro dela, o assento sobre uma cadeira, o chão no resto. */
+/** O chão onde se pisa em (x, z): o tampo da mesa dentro dela, o assento sobre uma cadeira, o chão do cenário no resto. */
 export function floorAt(x: number, z: number): number {
   const r = Math.hypot(x, z);
   if (r < TABLE_R) return TABLE_TOP;
-  for (let s = 0 as Seat; s < 4; s = (s + 1) as Seat) { const d = seatDir(s).multiplyScalar(SEAT_R); if (Math.hypot(x - d.x, z - d.z) < 0.3) return STOOL_H; }
-  return 0;
+  for (let s = 0 as Seat; s < 4; s = (s + 1) as Seat) { const d = seatDir(s).multiplyScalar(SEAT_R); if (Math.hypot(x - d.x, z - d.z) < SEAT_FOOT_R) return STOOL_H; }
+  return walkBounds.floorAt(x, z);
 }
 
 /**
@@ -68,7 +71,7 @@ export function stepWalk(dt: number) {
   const r = Math.hypot(walk.x, walk.z);
   const belowTop = walk.y < TABLE_TOP - 0.02;
   const min = belowTop ? WALK_MIN_R : 0;
-  const clamped = Math.min(WALK_MAX_R, Math.max(min, r));
+  const clamped = Math.min(walkBounds.maxR, Math.max(min, r));
   if (clamped !== r && r > 0) { walk.x *= clamped / r; walk.z *= clamped / r; }
   walk.vy -= GRAVITY * dt;
   walk.y += walk.vy * dt;
@@ -107,7 +110,7 @@ export function sitDown() {
   resetLook(); look.yaw = 0; look.pitch = 0;
 }
 
-/** Quem senta e mandou uma presença longe da cadeira, ou à altura do banquinho ou acima, está de pé (um quique sentado fica abaixo). */
+/** Quem senta e mandou uma presença longe da cadeira, ou à altura do assento ou acima, está de pé (um quique sentado fica abaixo). */
 export function presenceStanding(seat: Seat, p: Presence) {
   const s = seatSpot(seat);
   return Math.hypot(p.x - s.x, p.z - s.z) > ZOOM_DIST + 0.25 || p.y >= STOOL_H - 0.02;

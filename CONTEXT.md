@@ -74,6 +74,10 @@ _Evitar_: mão de onze cega
 O lugar onde uma turma se reúne para jogar. Qualquer pessoa cria uma sala e entra por código ou link. Sobrevive ao fim da partida e morre depois de dez minutos sem atividade.
 _Evitar_: lobby, mesa (a mesa é o objeto 3D dentro da sala), partida
 
+**Cenário** (`scenery`):
+O lugar ao redor da mesa: o chão, o que se vê em volta, a luz, a mesa e as cadeiras, e o desenho do baralho. É escolhido por sala, no lobby, por qualquer pessoa, e fica trancado enquanto uma partida corre; offline, é escolhido na tela e lembrado no navegador. Hoje existem dois: o **bar de esquina** (`bar`), o padrão, um boteco na calçada no fim de tarde, e o **cemitério** (`graveyard`), uma noite gótica sob a lua de sangue.
+_Evitar_: mapa, map, fase, level, tema, skin, mundo
+
 **Apelido** (`nickname`):
 O nome que uma pessoa escolhe ao entrar na sala. Não há conta nem cadastro.
 _Evitar_: usuário, login, conta

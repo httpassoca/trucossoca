@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { t } from '../i18n.svelte';
+  import { rememberedScenery } from '../identity';
   import { ui } from '../state.svelte';
   import { LocalTable } from '../table/local';
   import TableScreen from './Table.svelte';
@@ -15,6 +16,7 @@
     get botDelay() { return ui.botDelay; },
     get you() { return t('you'); },
     get teams(): [string, string] { return [t('team.us'), t('team.them')]; },
+    scenery: rememberedScenery(),
   });
   // ao sair da tela os bots param de jogar sozinhos
   onMount(() => { table.newGame(); return () => table.dispose(); });
