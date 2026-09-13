@@ -10,9 +10,13 @@ export const NICKNAME_MAX = 20;
 export const TEAM_NAME_MAX = 20;
 /** Nomes das duplas até alguém renomear; a dupla 0 senta nas cadeiras 0 e 2, a 1 nas cadeiras 1 e 3. */
 export const DEFAULT_TEAM_NAMES: readonly [string, string] = ['Nós', 'Eles'];
-/** O cliente manda `ping` neste intervalo; o servidor derruba quem fica o dobro em silêncio. */
+/** O cliente manda `ping` neste intervalo; o servidor derruba quem fica o dobro em silêncio (e o cliente derruba um socket que não responde nada por um intervalo inteiro). */
 export const PING_INTERVAL = 15_000;
 export const SOCKET_IDLE_TIMEOUT = 30_000;
+/** Pessoa sentada que não age há este tempo pode ter a cadeira passada a um bot por outra pessoa sentada. */
+export const IDLE_HANDOFF = 60_000;
+/** Id público de membro: `m` e um número. */
+const MEMBER_ID_MAX = 16;
 
 /** Códigos de fechamento do WebSocket que o cliente sabe explicar (4xxx = da aplicação, sem reconectar). */
 export const CLOSE_ROOM_NOT_FOUND = 4404;
@@ -36,10 +40,12 @@ export type ClientMessage =
   | { type: 'decideDez'; action: DezAction }
   /** no fim de jogo, quem está sentado devolve a sala ao lobby com as mesmas cadeiras */
   | { type: 'rematch' }
+  /** passa a cadeira de outra pessoa sentada, parada há `IDLE_HANDOFF`, a um bot; ela retoma quando agir */
+  | { type: 'handToBot'; member: string }
   | { type: 'ping' };
 
-/** Por que uma jogada foi recusada: fora da partida, sem cadeira, ou o motor não aceitou (fora da vez, fase errada…). */
-export type ActionError = 'notPlaying' | 'notSeated' | 'illegal';
+/** Por que uma jogada foi recusada: fora da partida, sem cadeira, o motor não aceitou (fora da vez, fase errada…), ou a pessoa a passar ainda age. */
+export type ActionError = 'notPlaying' | 'notSeated' | 'illegal' | 'notIdle';
 
 // servidor → cliente
 export type ServerMessage =
@@ -60,6 +66,10 @@ export interface RoomMemberView {
   /** cadeira ocupada; null = fantasma */
   seat: Seat | null;
   bot: boolean;
+  /** pessoa cuja cadeira um bot joga agora (caiu, ou ficou parada e alguém a passou); volta a ser dela quando ela voltar ou agir */
+  botControlled: boolean;
+  /** há quanto tempo (ms, no momento do snapshot) esta pessoa não age na sala; 0 para bots */
+  idle: number;
 }
 
 /** Estado inteiro da sala como esta pessoa o vê. Chega inteiro a cada mudança; o cliente nunca faz diff. */
@@ -91,6 +101,8 @@ export function parseClientMessage(raw: unknown): ClientMessage | null {
     case 'start': return { type: 'start' };
     case 'raise': return { type: 'raise' };
     case 'rematch': return { type: 'rematch' };
+    case 'handToBot':
+      return typeof m.member === 'string' && m.member.length > 0 && m.member.length <= MEMBER_ID_MAX ? { type: 'handToBot', member: m.member } : null;
     case 'play':
       return isCardId(m.id) && typeof m.covered === 'boolean' ? { type: 'play', id: m.id, covered: m.covered } : null;
     case 'respond':

@@ -1,4 +1,4 @@
-import { DEFAULT_TEAM_NAMES, NICKNAME_MAX, TEAM_NAME_MAX, type ActionError, type ClientMessage, type RoomSnapshot, type ServerMessage } from '@truco/protocol';
+import { DEFAULT_TEAM_NAMES, IDLE_HANDOFF, NICKNAME_MAX, TEAM_NAME_MAX, type ActionError, type ClientMessage, type RoomSnapshot, type ServerMessage } from '@truco/protocol';
 import {
   chooseBotDez, chooseBotPlay, chooseBotResponse, createGame, decideDez, defaultRules, eventsFor, playCard, raise, respond, responderSeat,
   startHand, takeEvents, teamOf, viewFor, type CardId, type GameEvent, type GameState, type Perspective, type Rng, type Rules, type Seat, type Team,
@@ -6,7 +6,7 @@ import {
 
 /** A sala morre depois deste tempo sem ação de sala ou de jogo. */
 export const ROOM_TTL = 10 * 60_000;
-/** Quem cai tem este tempo para voltar com o mesmo token antes de sair da lista. */
+/** Quem cai tem este tempo para voltar com o mesmo token: no lobby, antes de sair da lista; na partida, antes de um bot jogar pela cadeira. */
 export const DISCONNECT_GRACE = 20_000;
 /** Ritmo da mesa: quanto um bot "pensa" antes de jogar e a pausa entre o fim de uma mão e a seguinte, ms. */
 export interface RoomPace { botDelay: number; handPause: number }
@@ -30,6 +30,8 @@ export interface RoomMember {
   /** cadeira ocupada; null = fantasma */
   seat: Seat | null;
   bot: boolean;
+  /** pessoa sentada por quem um bot joga agora: caiu por mais de `DISCONNECT_GRACE`, ou ficou parada e alguém passou a cadeira */
+  botControlled: boolean;
 }
 
 /** Timers pendentes como dado: o adaptador agenda, e devolve como entrada quando vencem. */
@@ -63,7 +65,8 @@ export interface RoomState {
 
 export type RoomInput =
   | { kind: 'connect'; token: string }
-  | { kind: 'disconnect'; token: string }
+  /** `since`: quando a pessoa deu o último sinal de vida, se a queda só foi notada pelo silêncio; a tolerância conta dali */
+  | { kind: 'disconnect'; token: string; since?: number }
   | { kind: 'message'; token: string; message: ClientMessage }
   | { kind: 'timer'; timer: RoomTimer };
 
@@ -81,6 +84,10 @@ export type RoomEvent =
   | { type: 'started'; humans: number; bots: number }
   | { type: 'gameOver'; winner: Team; scores: string }
   | { type: 'rematch'; id: string; nickname: string }
+  /** um bot passou a jogar pela cadeira desta pessoa: ela caiu, ou ficou parada e `by` passou a cadeira */
+  | { type: 'botTakeover'; id: string; nickname: string; seat: Seat; cause: 'dropped' | 'idle'; by?: string }
+  /** a pessoa voltou (ou agiu) e a cadeira é dela de novo */
+  | { type: 'reclaimed'; id: string; nickname: string; seat: Seat }
   | { type: 'died' };
 
 export interface RoomOutput { state: RoomState; out: Outgoing[]; events: RoomEvent[] }
@@ -96,7 +103,7 @@ export function createRoom(code: string, now: number, pace: RoomPace = DEFAULT_P
   };
 }
 
-const GAME_ACTIONS = new Set<ClientMessage['type']>(['play', 'raise', 'respond', 'decideDez', 'rematch']);
+const GAME_ACTIONS = new Set<ClientMessage['type']>(['play', 'raise', 'respond', 'decideDez', 'rematch', 'handToBot']);
 
 /**
  * Única porta da sala: estado atual + entrada + hora → estado novo, mensagens por destinatário e eventos.
@@ -114,8 +121,21 @@ export function step(state: RoomState, input: RoomInput, now: number, opts: Step
   const broadcast = (gameEvents: GameEvent[] = []) => {
     for (const t of connectedTokens(s)) {
       if (gameEvents.length) out.push({ to: t, message: { type: 'events', events: eventsFor(gameEvents, perspectiveOf(s, t)) } });
-      out.push({ to: t, message: { type: 'snapshot', snapshot: snapshotFor(s, t) } });
+      out.push({ to: t, message: { type: 'snapshot', snapshot: snapshotFor(s, t, now) } });
     }
+  };
+  /** um bot passa a jogar pela cadeira de `m`; a mesa pode ter de agir já */
+  const takeover = (m: RoomMember, cause: 'dropped' | 'idle', by?: string) => {
+    m.botControlled = true;
+    events.push({ type: 'botTakeover', id: m.id, nickname: m.nickname, seat: m.seat!, cause, ...(by === undefined ? {} : { by }) });
+    scheduleGame(s, now);
+  };
+  /** a cadeira volta a ser de `m`: o bot para (o timer dele cai) e o relógio de parada recomeça */
+  const reclaim = (m: RoomMember) => {
+    m.botControlled = false;
+    m.lastActivity = now;
+    events.push({ type: 'reclaimed', id: m.id, nickname: m.nickname, seat: m.seat! });
+    scheduleGame(s, now);
   };
   /** depois de qualquer mexida na partida: drena os eventos, avisa todo mundo e pede o próximo timer da mesa */
   const afterAction = () => {
@@ -139,10 +159,11 @@ export function step(state: RoomState, input: RoomInput, now: number, opts: Step
       if (m) {
         s.timers = s.timers.filter((t) => !(t.kind === 'drop' && t.token === m.token));
         if (!m.connected) { m.connected = true; events.push({ type: 'reconnected', id: m.id, nickname: m.nickname }); }
+        if (m.botControlled) reclaim(m);
         broadcast();
       } else {
         if (!s.visitors.includes(input.token)) s.visitors.push(input.token);
-        out.push({ to: input.token, message: { type: 'snapshot', snapshot: snapshotFor(s, input.token) } });
+        out.push({ to: input.token, message: { type: 'snapshot', snapshot: snapshotFor(s, input.token, now) } });
       }
       break;
     }
@@ -151,7 +172,7 @@ export function step(state: RoomState, input: RoomInput, now: number, opts: Step
       if (m) {
         if (!m.connected) break;
         m.connected = false;
-        s.timers.push({ kind: 'drop', token: m.token!, at: now + DISCONNECT_GRACE });
+        s.timers.push({ kind: 'drop', token: m.token!, at: Math.max(now, (input.since ?? now) + DISCONNECT_GRACE) });
         events.push({ type: 'disconnected', id: m.id, nickname: m.nickname });
         broadcast();
       } else {
@@ -169,7 +190,7 @@ export function step(state: RoomState, input: RoomInput, now: number, opts: Step
       if (msg.type === 'join' && !m) {
         if (!s.visitors.includes(input.token)) break;
         s.visitors = s.visitors.filter((t) => t !== input.token);
-        const created: RoomMember = { id: `m${s.nextId++}`, token: input.token, nickname: uniqueNickname(s, msg.nickname), connected: true, lastActivity: now, seat: null, bot: false };
+        const created: RoomMember = { id: `m${s.nextId++}`, token: input.token, nickname: uniqueNickname(s, msg.nickname), connected: true, lastActivity: now, seat: null, bot: false, botControlled: false };
         s.members.push(created);
         touch(created);
         events.push({ type: 'joined', id: created.id, nickname: created.nickname });
@@ -199,9 +220,22 @@ export function step(state: RoomState, input: RoomInput, now: number, opts: Step
         const refuse = (reason: ActionError) => out.push({ to: input.token, message: { type: 'error', action: msg.type, reason } });
         if (s.phase !== 'playing' || !s.game) { refuse('notPlaying'); break; }
         if (m.seat === null) { refuse('notSeated'); break; }
+        // quem tinha um bot jogando por si e age, retoma a cadeira antes de qualquer coisa, valha a jogada ou não
+        if (m.botControlled) { reclaim(m); broadcast(); }
+        if (msg.type === 'handToBot') {
+          // só de quem está conectada e ainda joga por si (quem caiu tem o próprio prazo), e só com partida em curso
+          const target = s.members.find((o) => o.id === msg.member);
+          if (s.game.over || !target || target === m || target.bot || target.seat === null || !target.connected || target.botControlled) { refuse('illegal'); break; }
+          if (now - target.lastActivity < IDLE_HANDOFF) { refuse('notIdle'); break; }
+          takeover(target, 'idle', m.id);
+          touch(m);
+          broadcast();
+          break;
+        }
         if (msg.type === 'rematch') {
           if (!s.game.over) { refuse('illegal'); break; }
           s.members = s.members.filter((o) => !o.bot);
+          for (const o of s.members) o.botControlled = false; // no lobby ninguém joga por ninguém
           s.game = null;
           s.phase = 'lobby';
           scheduleGame(s, now);
@@ -246,6 +280,7 @@ export function step(state: RoomState, input: RoomInput, now: number, opts: Step
         fillWithBots(s, now);
         s.game = createGame(s.rules);
         s.phase = 'playing';
+        for (const o of s.members) o.lastActivity = now; // os relógios de parada começam com a partida
         touch(m);
         events.push({ type: 'started', humans: s.members.filter((o) => o.seat !== null && !o.bot).length, bots: s.members.filter((o) => o.bot).length });
         newHand();
@@ -264,8 +299,11 @@ export function step(state: RoomState, input: RoomInput, now: number, opts: Step
       } else if (t.kind === 'drop') {
         const m = member(t.token);
         if (!m || m.connected) break;
-        // durante a partida a cadeira fica com quem caiu até voltar; os bots assumem em #6
-        if (s.phase === 'playing' && m.seat !== null) break;
+        // durante a partida a cadeira continua da pessoa, mas um bot joga por ela até ela voltar (se já não joga, ou se a partida acabou, nada muda)
+        if (s.phase === 'playing' && m.seat !== null) {
+          if (!m.botControlled && !s.game!.over) { takeover(m, 'dropped'); broadcast(); }
+          break;
+        }
         s.members = s.members.filter((x) => x !== m);
         events.push({ type: 'left', id: m.id, nickname: m.nickname });
         broadcast();
@@ -298,13 +336,14 @@ function applyAction(g: GameState, seat: Seat, msg: ClientMessage, rng: Rng): bo
 }
 
 /**
- * Qual bot tem de agir agora, se algum. Na vaza é quem tem a vez. Truco e mão de dez são da dupla: se alguém
- * da dupla é gente, a pessoa responde (o bot parceiro espera); numa dupla só de bots, a cadeira que o motor aponta.
+ * Qual bot tem de agir agora, se algum (bot de verdade, ou o que joga pela cadeira de uma pessoa ausente). Na vaza é
+ * quem tem a vez. Truco e mão de dez são da dupla: se alguém da dupla é gente presente, a pessoa responde (o bot
+ * parceiro espera); numa dupla só de bots, a cadeira que o motor aponta.
  */
 function botToAct(s: RoomState): Seat | null {
   const g = s.game!, h = g.hand;
   if (!h || g.over || h.phase === 'over') return null;
-  const botAt = (seat: Seat) => s.members.some((m) => m.seat === seat && m.bot);
+  const botAt = (seat: Seat) => s.members.some((m) => m.seat === seat && (m.bot || m.botControlled));
   if (h.phase === 'play') return botAt(h.turn) ? h.turn : null;
   const first = h.phase === 'respond' ? responderSeat(g) : TEAM_SEATS[h.decider!][0];
   return TEAM_SEATS[teamOf(first)].every(botAt) ? first : null;
@@ -320,13 +359,18 @@ function botAct(g: GameState, seat: Seat, rng: Rng) {
   }
 }
 
-/** Troca os timers da mesa pelo que a situação pede agora: a mão seguinte, a vez de um bot, ou nada (gente ou fim de jogo). */
+/**
+ * Troca os timers da mesa pelo que a situação pede agora: a mão seguinte, a vez de um bot, ou nada (gente ou fim de jogo).
+ * A pausa entre mãos, uma vez marcada, não recomeça (uma tomada ou retomada no meio dela não a adia).
+ */
 function scheduleGame(s: RoomState, now: number) {
-  s.timers = s.timers.filter((t) => t.kind !== 'bot' && t.kind !== 'nextHand');
+  s.timers = s.timers.filter((t) => t.kind !== 'bot');
   const g = s.game, h = g?.hand;
+  const pausing = h?.phase === 'over' && s.phase === 'playing';
+  if (!pausing) s.timers = s.timers.filter((t) => t.kind !== 'nextHand');
   if (!g || !h || s.phase !== 'playing') return;
   if (h.phase === 'over') {
-    if (!g.over) s.timers.push({ kind: 'nextHand', at: now + s.pace.handPause });
+    if (!g.over && !s.timers.some((t) => t.kind === 'nextHand')) s.timers.push({ kind: 'nextHand', at: now + s.pace.handPause });
     return;
   }
   const seat = botToAct(s);
@@ -348,7 +392,7 @@ function fillWithBots(s: RoomState, now: number) {
     if (s.members.some((m) => m.seat === seat)) continue;
     const taken = new Set(s.members.map((m) => m.nickname.toLocaleLowerCase()));
     const nickname = BOT_NAMES.find((n) => !taken.has(n.toLocaleLowerCase())) ?? uniqueNickname(s, BOT_NAMES[0]);
-    s.members.push({ id: `m${s.nextId++}`, token: null, nickname, connected: true, lastActivity: now, seat, bot: true });
+    s.members.push({ id: `m${s.nextId++}`, token: null, nickname, connected: true, lastActivity: now, seat, bot: true, botControlled: false });
   }
 }
 
@@ -358,17 +402,17 @@ export function connectedTokens(s: RoomState): string[] {
 }
 
 /**
- * A sala como este token a vê. Sem tokens; só ids públicos. Quem está sentado vê só as próprias cartas
+ * A sala como este token a vê em `now`. Sem tokens; só ids públicos. Quem está sentado vê só as próprias cartas
  * (e as do parceiro na decisão da mão de dez); fantasma vê tudo ou nada conforme o toggle; visitante
- * (ainda sem apelido) não vê carta nenhuma.
+ * (ainda sem apelido) não vê carta nenhuma. `idle` de cada pessoa é medido em `now`.
  */
-export function snapshotFor(s: RoomState, token: string): RoomSnapshot {
+export function snapshotFor(s: RoomState, token: string, now: number): RoomSnapshot {
   const me = s.members.find((m) => m.token === token);
   const from = perspectiveOf(s, token);
   return {
     code: s.code,
     phase: s.phase === 'playing' ? 'playing' : 'lobby',
-    members: s.members.map((m) => ({ id: m.id, nickname: m.nickname, connected: m.connected, seat: m.seat, bot: m.bot })),
+    members: s.members.map((m) => ({ id: m.id, nickname: m.nickname, connected: m.connected, seat: m.seat, bot: m.bot, botControlled: m.botControlled, idle: m.bot ? 0 : Math.max(0, now - m.lastActivity) })),
     you: me?.id ?? null,
     teams: [...s.teams],
     rules: copyRules(s.game ? s.game.rules : s.rules),

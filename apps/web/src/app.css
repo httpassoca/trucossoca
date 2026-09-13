@@ -54,6 +54,7 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: var(--ss-bg)
 .tm-members { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 6px; }
 .tm-members li { display: flex; align-items: center; gap: 8px; }
 .tm-members li.off > span:first-child { color: var(--ss-fg-faint); text-decoration: line-through; }
+.tm-members li > .ss-btn { margin-left: auto; }
 .tm-warn { color: var(--ss-yellow); }
 .tm-error { margin: 0; color: var(--ss-red); font-size: var(--ss-ui-sm); }
 

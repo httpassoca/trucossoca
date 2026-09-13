@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { NICKNAME_MAX, TEAM_NAME_MAX, type RoomMemberView } from '@truco/protocol';
+  import { IDLE_HANDOFF, NICKNAME_MAX, TEAM_NAME_MAX, type RoomMemberView } from '@truco/protocol';
   import { teamOf, type Team } from '@truco/rules';
   import { onMount, untrack } from 'svelte';
   import RulesForm from '../hud/RulesForm.svelte';
@@ -13,6 +13,9 @@
   let { code }: { code: string } = $props();
 
   let remote = $state.raw<RemoteState>({ status: 'idle', room: null, reason: null, attempt: 0 });
+  /** quando o snapshot atual chegou e a hora de agora: `idle` de cada pessoa é medido no snapshot e envelhece daqui */
+  let snapAt = $state(Date.now());
+  let now = $state(Date.now());
   let nickname = $state(rememberedNickname());
   let copied = $state(false);
   let field = $state<HTMLInputElement>();
@@ -20,12 +23,21 @@
   const table = new RemoteTable({ url: wsUrl(), room: untrack(() => code), token: token() });
 
   onMount(() => {
-    const off = table.watch((s) => (remote = s));
+    const off = table.watch((s) => { if (s.room !== remote.room) snapAt = Date.now(); remote = s; });
+    // a rede caiu e voltou: sem esperar o ping descobrir
     const online = () => table.retryNow();
+    const offline = () => table.reconnect();
     window.addEventListener('online', online);
+    window.addEventListener('offline', offline);
     table.connect();
     field?.focus();
-    return () => { window.removeEventListener('online', online); off(); table.dispose(); };
+    return () => { window.removeEventListener('online', online); window.removeEventListener('offline', offline); off(); table.dispose(); };
+  });
+  // durante a partida o relógio anda, para o botão de passar uma cadeira liberar na hora certa
+  $effect(() => {
+    if (remote.room?.phase !== 'playing') return;
+    const h = setInterval(() => (now = Date.now()), 1000);
+    return () => clearInterval(h);
   });
 
   const room = $derived(remote.room);
@@ -45,6 +57,12 @@
   const ghosts = $derived((room?.members ?? []).filter((m) => m.seat === null));
   const myTeam = $derived(me ? teamOfMember(me) : null);
   const canStart = $derived(live && !!me && me.seat !== null);
+  const seated = $derived((room?.members ?? []).filter((m) => m.seat !== null).sort((a, b) => a.seat! - b.seat!));
+  /** há quanto tempo esta pessoa não age, agora */
+  const idleFor = (m: RoomMemberView) => m.idle + Math.max(0, now - snapAt);
+  /** outra pessoa sentada, que ainda joga por si: quem senta pode passar a cadeira dela a um bot depois de um minuto parada */
+  const canHandOff = (m: RoomMemberView) => live && !!me && me.seat !== null && m.id !== me.id && !m.bot && m.connected && !m.botControlled;
+  const handOffWait = (m: RoomMemberView) => Math.max(0, Math.ceil((IDLE_HANDOFF - idleFor(m)) / 1000));
 
   function submit(e: SubmitEvent) {
     e.preventDefault();
@@ -61,13 +79,32 @@
   }
 </script>
 
-{#snippet member(m: RoomMemberView)}
+{#snippet badges(m: RoomMemberView)}
+  {#if m.id === room?.you}<span class="ss-badge brand">você</span>{/if}
+  {#if m.bot}<span class="ss-badge neutral">bot</span>{/if}
+  {#if !m.connected}<span class="ss-badge neutral">caiu</span>{/if}
+  {#if m.botControlled}<span class="ss-badge caution" title="um bot joga por esta pessoa até ela voltar ou agir">bot jogando</span>{/if}
+{/snippet}
+<!-- `handoff`: com o botão de passar a cadeira a um bot (só na mesa, para quem senta) -->
+{#snippet member(m: RoomMemberView, handoff = false)}
   <li class:off={!m.connected}>
     <span>{m.nickname}</span>
-    {#if m.id === room?.you}<span class="ss-badge brand">você</span>{/if}
-    {#if m.bot}<span class="ss-badge neutral">bot</span>{/if}
-    {#if !m.connected}<span class="ss-badge neutral">caiu</span>{/if}
+    {@render badges(m)}
+    {#if handoff && canHandOff(m)}
+      {@const wait = handOffWait(m)}
+      <button class="ss-btn" type="button" disabled={wait > 0} title={wait > 0 ? `só depois de um minuto sem agir: faltam ${wait}s` : 'um bot joga por esta pessoa até ela agir de novo'} onclick={() => table.handToBot(m.id)}>
+        {wait > 0 ? `Passar para um bot (${wait}s)` : 'Passar para um bot'}
+      </button>
+    {/if}
   </li>
+{/snippet}
+<!-- no menu da mesa: quem senta, quem caiu, e passar a cadeira de quem ficou parada a um bot -->
+{#snippet roomPanel()}
+  <h4>Sala {code} <span style="text-transform:none;letter-spacing:0">({STATUS[remote.status]})</span></h4>
+  <ul class="tm-members">
+    {#each seated as m (m.id)}{@render member(m, true)}{/each}
+  </ul>
+  {#if ghosts.length}<p class="tm-hint">Fantasmas: {ghosts.map((m) => m.nickname).join(', ')}</p>{/if}
 {/snippet}
 
 {#if remote.status === 'closed' && remote.reason}
@@ -87,7 +124,7 @@
   </div>
 {:else if me && room?.phase === 'playing'}
   <!-- a partida começou: todo mundo cai na mesa 3D; quem não tem cadeira olha como fantasma -->
-  <TableScreen {table} menuOpen={false} />
+  <TableScreen {table} menuOpen={false} room={roomPanel} />
   {#if remote.status !== 'open'}<div class="tm-toast tm-warn">{STATUS[remote.status]}</div>{/if}
 {:else if !me}
   <div class="tm-screen">

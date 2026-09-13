@@ -18,6 +18,13 @@ describe('parseClientMessage', () => {
     expect(parseClientMessage(JSON.stringify({ type: 'join', nickname: 'x'.repeat(NICKNAME_MAX * 10) }))).toBeNull();
   });
 
+  test('passar uma cadeira a um bot leva o id do membro', () => {
+    expect(parseClientMessage(JSON.stringify({ type: 'handToBot', member: 'm2' }))).toEqual({ type: 'handToBot', member: 'm2' });
+    expect(parseClientMessage(JSON.stringify({ type: 'handToBot' }))).toBeNull();
+    expect(parseClientMessage(JSON.stringify({ type: 'handToBot', member: 2 }))).toBeNull();
+    expect(parseClientMessage(JSON.stringify({ type: 'handToBot', member: 'm'.repeat(100) }))).toBeNull();
+  });
+
   test('aceita as mensagens da sala: cadeira, dupla, regras, fantasmas e começar', () => {
     expect(parseClientMessage(JSON.stringify({ type: 'takeSeat', team: 1 }))).toEqual({ type: 'takeSeat', team: 1 });
     expect(parseClientMessage(JSON.stringify({ type: 'leaveSeat' }))).toEqual({ type: 'leaveSeat' });

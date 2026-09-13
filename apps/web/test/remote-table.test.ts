@@ -22,8 +22,8 @@ class FakeSocket implements SocketLike {
 }
 
 type Member = RoomSnapshot['members'][number];
-const human = (id: string, nickname: string, seat: Member['seat'] = null): Member => ({ id, nickname, connected: true, seat, bot: false });
-const bot = (id: string, nickname: string, seat: Member['seat']): Member => ({ id, nickname, connected: true, seat, bot: true });
+const human = (id: string, nickname: string, seat: Member['seat'] = null): Member => ({ id, nickname, connected: true, seat, bot: false, botControlled: false, idle: 0 });
+const bot = (id: string, nickname: string, seat: Member['seat']): Member => ({ id, nickname, connected: true, seat, bot: true, botControlled: false, idle: 0 });
 const lobby = (members: Member[], you: string | null, patch: Partial<RoomSnapshot> = {}): RoomSnapshot =>
   ({ code: 'ABCD', phase: 'lobby', members, you, teams: ['Nós', 'Eles'], rules: defaultRules, ghostsSeeCards: true, game: null, ...patch });
 
@@ -72,6 +72,7 @@ describe('RemoteTable: conexão', () => {
     clock.step();
     expect(last().sent).toEqual([{ type: 'ping' }]);
     expect(clock.now).toBe(PING_INTERVAL);
+    last().receive({ type: 'pong' });
     clock.step();
     expect(last().sent).toHaveLength(2);
     const old = last();
@@ -121,6 +122,18 @@ describe('RemoteTable: a mesa', () => {
     expect(snap.game.hand!.stock).toBe(28);
     expect(snap.acting).toBe(real.hand!.turn);
     expect(snap.canRaise).toBe(real.hand!.turn === 1);
+  });
+
+  test('a cadeira de quem caiu ou ficou parada mostra que um bot joga por ela; passar uma cadeira vira mensagem', () => {
+    const { table, last } = setup();
+    table.connect(); last().open();
+    const { snapshot } = playing(1);
+    snapshot.members[4] = { ...snapshot.members[4], seat: 3, connected: false, botControlled: true };
+    snapshot.members[3] = { ...snapshot.members[3], seat: null };
+    last().receive({ type: 'snapshot', snapshot });
+    expect(table.snapshot.seats.map((s) => [s.name, s.bot, s.botControlled])).toEqual([['Tião', true, false], ['Zé', false, false], ['Nena', true, false], ['Dita', false, true]]);
+    table.handToBot('m5');
+    expect(last().sent).toEqual([{ type: 'handToBot', member: 'm5' }]);
   });
 
   test('fantasma não tem cadeira, não truca e não é esperado por ninguém', () => {
@@ -222,6 +235,41 @@ describe('RemoteTable: reconexão', () => {
     clock.step(); last().open();
     last().receive({ type: 'snapshot', snapshot: lobby([], null) });
     expect(last().sent).toEqual([{ type: 'join', nickname: 'Zé' }]);
+  });
+
+  test('um ping sem resposta nenhuma até o ping seguinte derruba o socket e reconecta; qualquer mensagem do servidor conta como resposta', () => {
+    const { table, last, clock, sockets } = setup();
+    table.connect(); last().open();
+    const first = last();
+    clock.step(); // 1º ping
+    first.receive({ type: 'pong' });
+    clock.step(); // 2º ping: o 1º foi respondido
+    expect(table.state.status).toBe('open');
+    first.receive({ type: 'snapshot', snapshot: lobby([], null) });
+    clock.step(); // 3º ping: houve um snapshot no meio
+    expect(table.state.status).toBe('open');
+    clock.step(); // nada chegou desde o 3º ping: a conexão está morta
+    expect(first.closedBy).not.toBeNull();
+    expect(table.state.status).toBe('reconnecting');
+    expect(first.sent.filter((m) => (m as { type: string }).type === 'ping')).toHaveLength(3);
+    clock.step(); // a espera venceu: socket novo
+    expect(sockets).toHaveLength(2);
+    last().open();
+    expect(table.state.status).toBe('open');
+  });
+
+  test('reconnect() derruba o socket de vez (a rede caiu) e retryNow() tenta na hora quando ela volta', () => {
+    const { table, last, clock, sockets } = setup();
+    table.connect(); last().open();
+    table.reconnect();
+    expect(sockets[0].closedBy).not.toBeNull();
+    expect(table.state.status).toBe('reconnecting');
+    expect(sockets).toHaveLength(1);
+    table.retryNow();
+    expect(sockets).toHaveLength(2);
+    expect(clock.pending).toBe(0);
+    last().open();
+    expect(table.state.status).toBe('open');
   });
 
   test('dispose fecha o socket e não deixa timer nenhum', () => {

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import type { Snippet } from 'svelte';
   import { newGame } from '../controller';
   import { resume } from '../input';
   import { navigate } from '../route.svelte';
@@ -8,6 +9,8 @@
   import Seg from './Seg.svelte';
   import Switch from './Switch.svelte';
 
+  /** `room`: a seção da sala (quem está, passar cadeira), que só a tela online sabe montar */
+  let { room }: { room?: Snippet } = $props();
   const snap = $derived(live.snap);
 
   // dois eixos do dssoca + override do token --ss-accent
@@ -40,6 +43,7 @@
       </div>
       <div class="body">
         <div>
+          {#if room}<div class="tm-section">{@render room()}</div>{/if}
           <div class="tm-section"><h4>Tema</h4><Seg value={theme} options={[['dark', 'escuro'], ['light', 'claro']]} onselect={(v) => (theme = v)} /></div>
           <div class="tm-section"><h4>Destaque</h4><Seg value={accent} options={[['', 'verde'], ['yellow', 'âmbar'], ['cyan', 'ciano'], ['magenta', 'magenta'], ['red', 'vermelho']]} onselect={(v) => (accent = v)} /></div>
           <div class="tm-section"><h4>Tamanho</h4><Seg value={size} options={[['sm', 'sm'], ['md', 'md'], ['lg', 'lg']]} onselect={(v) => (size = v)} /></div>

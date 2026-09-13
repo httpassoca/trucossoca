@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import type { ClientMessage, RoomSnapshot, ServerMessage } from '@truco/protocol';
+import { IDLE_HANDOFF, type ClientMessage, type RoomSnapshot, type ServerMessage } from '@truco/protocol';
 import { canRaise, defaultRules, teamOf, type CardId, type GameEvent, type PlayView, type Seat, type Team } from '@truco/rules';
 import { BOT_DECISION_EXTRA, createRoom, DEFAULT_PACE, DISCONNECT_GRACE, step, type RoomEvent, type RoomInput, type RoomState, type RoomTimer } from '../src/room';
 
@@ -378,26 +378,186 @@ describe('partida online: revanche', () => {
   });
 });
 
-describe('partida online: quem cai no meio da partida', () => {
-  test('a cadeira fica com a pessoa até ela voltar (os bots assumem em #6)', () => {
-    const s = scripted();
-    s.feed({ kind: 'disconnect', token: 't2' });
-    const drop = s.state.timers.find((t) => t.kind === 'drop')!;
-    s.fire(drop);
-    expect(s.snapshotFor('t1')!.members.map((m) => [m.nickname, m.seat, m.connected])).toContainEqual(['Dita', 2, false]);
-    s.connect('t2');
-    expect(s.snapshotFor('t2')!.game!.hand!.cards[2].every((c) => c !== null)).toBe(true);
+describe('partida online: ausência', () => {
+  const dropOf = (s: Sim) => s.state.timers.find((t) => t.kind === 'drop')!;
+  const memberNamed = (s: Sim, token: string, name: string) => s.snapshotFor(token)!.members.find((m) => m.nickname === name)!;
+
+  test('quem cai no meio da partida segura a cadeira por vinte segundos; depois um bot joga por ela, sem tirá-la da sala', () => {
+    const s = scripted(); // mão 1: vez de Zé (cadeira 0)
+    s.feed({ kind: 'disconnect', token: 't1' });
+    expect(s.state.timers).toContainEqual({ kind: 'drop', token: 't1', at: T0 + DISCONNECT_GRACE });
+    expect(s.gameTimer()).toBeUndefined(); // enquanto Zé pode voltar, a vez segue dele
+    s.fire(dropOf(s));
+    expect(memberNamed(s, 't2', 'Zé')).toMatchObject({ seat: 0, connected: false, bot: false, botControlled: true });
+    expect(s.events).toContainEqual({ type: 'botTakeover', id: 'm1', nickname: 'Zé', seat: 0, cause: 'dropped' });
+    // a cadeira 0 agora é de um bot: a sala pede o timer da mesa e ele joga
+    expect(s.gameTimer()).toEqual({ kind: 'bot', seat: 0, at: T0 + DISCONNECT_GRACE + DEFAULT_PACE.botDelay });
+    s.fire(s.gameTimer()!);
+    expect(s.eventsFor('t2').filter((e) => e.type === 'play')).toEqual([expect.objectContaining({ type: 'play', seat: 0 })]);
   });
 
-  test('quem caiu e não voltou até a revanche ganha a tolerância de novo no lobby, e depois dela a cadeira fica livre', () => {
+  test('voltar antes dos vinte segundos cancela a tomada: a cadeira nunca foi de um bot', () => {
     const s = scripted();
-    run(s);
-    s.feed({ kind: 'disconnect', token: 't2' }); // Dita cai no fim de jogo e segue sentada
-    s.fire(s.state.timers.find((t) => t.kind === 'drop')!);
-    expect(s.state.members.find((m) => m.token === 't2')!.seat).toBe(2);
+    s.feed({ kind: 'disconnect', token: 't1' });
+    s.feed({ kind: 'connect', token: 't1' }, T0 + 5_000);
+    expect(s.state.timers.filter((t) => t.kind === 'drop')).toEqual([]);
+    expect(memberNamed(s, 't1', 'Zé')).toMatchObject({ connected: true, botControlled: false });
+    expect(s.events.filter((e) => e.type === 'botTakeover' || e.type === 'reclaimed')).toEqual([]);
+  });
+
+  test('voltar depois da tomada retoma a cadeira na hora, com as cartas, e o bot para de jogar por ela', () => {
+    const s = scripted();
+    s.feed({ kind: 'disconnect', token: 't1' });
+    s.fire(dropOf(s));
+    const pending = s.gameTimer()!; // o bot ia jogar pela cadeira 0
+    s.out = [];
+    s.feed({ kind: 'connect', token: 't1' }, s.now + 100);
+    const snap = s.snapshotFor('t1')!;
+    expect(snap.members[0]).toMatchObject({ nickname: 'Zé', seat: 0, connected: true, botControlled: false });
+    expect([...snap.game!.hand!.cards[0]].sort()).toEqual([...SCRIPT[1].cards[0]].sort());
+    expect(s.events).toContainEqual({ type: 'reclaimed', id: 'm1', nickname: 'Zé', seat: 0 });
+    expect(s.gameTimer()).toBeUndefined();
+    const before = structuredClone(s.state);
+    s.fire(pending); // o timer velho já não vale
+    expect(s.state).toEqual(before);
+  });
+
+  test('quem já tem um bot jogando por si e depois cai não é tomada duas vezes; no fim de jogo ninguém é tomado', () => {
+    const s = scripted();
+    s.feed({ kind: 'message', token: 't1', message: { type: 'handToBot', member: 'm2' } }, T0 + IDLE_HANDOFF);
+    s.feed({ kind: 'disconnect', token: 't2' });
+    s.fire(dropOf(s));
+    expect(s.events.filter((e) => e.type === 'botTakeover')).toHaveLength(1);
+    run(s, undefined, [['t1', 0]]);
+    s.say('t2', { type: 'raise' }); // Dita retoma no fim de jogo (a jogada em si é recusada)
+    s.out = [];
+    s.feed({ kind: 'message', token: 't2', message: { type: 'handToBot', member: 'm1' } }, s.now + IDLE_HANDOFF);
+    expect(s.out).toEqual([{ to: 't2', message: { type: 'error', action: 'handToBot', reason: 'illegal' } }]);
+    s.feed({ kind: 'disconnect', token: 't1' });
+    s.fire(dropOf(s));
+    expect(s.events.filter((e) => e.type === 'botTakeover')).toHaveLength(1);
+    expect(memberNamed(s, 't3', 'Zé')).toMatchObject({ connected: false, botControlled: false });
+  });
+
+  test('passar a cadeira de quem caiu há pouco é recusado: ela tem o próprio prazo', () => {
+    const s = scripted();
+    s.feed({ kind: 'disconnect', token: 't2' }, T0 + IDLE_HANDOFF);
+    s.out = [];
+    s.say('t1', { type: 'handToBot', member: 'm2' });
+    expect(s.out).toEqual([{ to: 't1', message: { type: 'error', action: 'handToBot', reason: 'illegal' } }]);
+  });
+
+  test('uma tomada ou retomada durante a pausa entre mãos não adia a mão seguinte', () => {
+    const s = new Sim();
+    s.state = createRoom('ABCD', T0, { botDelay: 100, handPause: 5_000 });
+    s.join('t1', 'Zé'); s.sit('t1', 0); s.join('t2', 'Dita'); s.sit('t2', 0);
+    s.decks[1] = SCRIPT[1].cards;
+    s.start('t1');
+    s.say('t1', { type: 'raise' });
+    s.fire(s.gameTimer()!); // o bot corre: mão 1 acabou, a pausa está marcada
+    const pause = s.gameTimer()!;
+    expect(pause.kind).toBe('nextHand');
+    // Dita estava muda desde antes: a tolerância vence no meio da pausa
+    s.feed({ kind: 'disconnect', token: 't2', since: pause.at - 3_000 - DISCONNECT_GRACE }, pause.at - 4_000);
+    expect(dropOf(s).at).toBe(pause.at - 3_000);
+    s.fire(dropOf(s));
+    expect(s.state.members[1].botControlled).toBe(true);
+    expect(s.gameTimer()).toEqual(pause);
+    s.feed({ kind: 'connect', token: 't2' }, pause.at - 2_000);
+    expect(s.state.members[1].botControlled).toBe(false);
+    expect(s.gameTimer()).toEqual(pause);
+  });
+
+  test('fantasma que cai durante a partida sai da sala como sempre', () => {
+    const s = scripted();
+    s.feed({ kind: 'disconnect', token: 't3' });
+    s.fire(dropOf(s));
+    expect(s.snapshotFor('t1')!.members.map((m) => m.nickname)).toEqual(['Zé', 'Dita', 'Tião', 'Bastião']);
+    expect(s.events).toContainEqual({ type: 'left', id: 'm3', nickname: 'Nena' });
+  });
+
+  test('quem está parada há um minuto pode ter a cadeira passada a um bot por outra pessoa sentada; antes disso, não', () => {
+    const s = scripted(); // a partida começa em T0: os relógios de parada começam aqui
+    s.out = [];
+    s.feed({ kind: 'message', token: 't1', message: { type: 'handToBot', member: 'm2' } }, T0 + IDLE_HANDOFF - 1);
+    expect(s.out).toEqual([{ to: 't1', message: { type: 'error', action: 'handToBot', reason: 'notIdle' } }]);
+    s.feed({ kind: 'message', token: 't1', message: { type: 'handToBot', member: 'm2' } }, T0 + IDLE_HANDOFF);
+    expect(memberNamed(s, 't3', 'Dita')).toMatchObject({ seat: 2, connected: true, bot: false, botControlled: true });
+    expect(s.events).toContainEqual({ type: 'botTakeover', id: 'm2', nickname: 'Dita', seat: 2, cause: 'idle', by: 'm1' });
+  });
+
+  test('a pessoa parada retoma a cadeira na primeira jogada que manda, mesmo uma recusada, e volta a contar como ativa', () => {
+    const s = scripted();
+    s.feed({ kind: 'message', token: 't1', message: { type: 'handToBot', member: 'm2' } }, T0 + IDLE_HANDOFF);
+    s.out = [];
+    s.say('t2', { type: 'play', id: '4c', covered: false }); // Dita não tem o 4♣ nem a vez
+    expect(s.errorsFor('t2')).toEqual([{ type: 'error', action: 'play', reason: 'illegal' }]);
+    expect(memberNamed(s, 't2', 'Dita').botControlled).toBe(false);
+    expect(s.events).toContainEqual({ type: 'reclaimed', id: 'm2', nickname: 'Dita', seat: 2 });
+    s.out = [];
+    s.say('t1', { type: 'handToBot', member: 'm2' });
+    expect(s.out).toEqual([{ to: 't1', message: { type: 'error', action: 'handToBot', reason: 'notIdle' } }]);
+  });
+
+  test('enquanto é bot, a cadeira joga pelo timer; quando a pessoa retoma jogando, o timer some e a jogada vale', () => {
+    const s = scripted();
+    s.feed({ kind: 'message', token: 't1', message: { type: 'handToBot', member: 'm2' } }, T0 + IDLE_HANDOFF);
+    s.say('t1', { type: 'play', id: '4c', covered: false });
+    s.fire(s.gameTimer()!); // bot da cadeira 1
+    expect(s.gameTimer()).toMatchObject({ kind: 'bot', seat: 2 });
+    s.out = [];
+    s.say('t2', { type: 'play', id: '2c', covered: false });
+    expect(s.eventsFor('t2')).toEqual([expect.objectContaining({ type: 'play', seat: 2, id: '2c' })]);
+    expect(s.gameTimer()).toMatchObject({ kind: 'bot', seat: 3 });
+  });
+
+  test('passar a cadeira: só quem senta, só durante a partida, só de outra pessoa sentada que ainda não é bot', () => {
+    const s = nosContraBots();
+    for (const [n, { cards }] of Object.entries(SCRIPT)) s.decks[Number(n)] = cards;
+    s.out = [];
+    s.say('t1', { type: 'handToBot', member: 'm2' });
+    expect(s.out).toEqual([{ to: 't1', message: { type: 'error', action: 'handToBot', reason: 'notPlaying' } }]);
+    s.start('t1');
+    s.now = T0 + IDLE_HANDOFF;
+    s.out = [];
+    s.say('t3', { type: 'handToBot', member: 'm2' }); // fantasma
+    s.say('t1', { type: 'handToBot', member: 'm1' }); // a própria
+    s.say('t1', { type: 'handToBot', member: 'm3' }); // um fantasma
+    s.say('t1', { type: 'handToBot', member: 'm4' }); // um bot
+    s.say('t1', { type: 'handToBot', member: 'm99' }); // ninguém
+    expect(s.out.map((o) => [o.to, (o.message as { reason: string }).reason])).toEqual([['t3', 'notSeated'], ['t1', 'illegal'], ['t1', 'illegal'], ['t1', 'illegal'], ['t1', 'illegal']]);
+    s.say('t1', { type: 'handToBot', member: 'm2' });
+    s.out = [];
+    s.say('t1', { type: 'handToBot', member: 'm2' }); // já é bot
+    expect(s.out).toEqual([{ to: 't1', message: { type: 'error', action: 'handToBot', reason: 'illegal' } }]);
+  });
+
+  test('o relógio de parada começa com a partida, não no lobby', () => {
+    const s = nosContraBots(); // Dita entrou em T0
+    s.feed({ kind: 'message', token: 't1', message: { type: 'start' } }, T0 + 2 * IDLE_HANDOFF);
+    s.out = [];
+    s.feed({ kind: 'message', token: 't1', message: { type: 'handToBot', member: 'm2' } }, T0 + 2 * IDLE_HANDOFF + 1_000);
+    expect(s.out).toEqual([{ to: 't1', message: { type: 'error', action: 'handToBot', reason: 'notIdle' } }]);
+    s.feed({ kind: 'message', token: 't1', message: { type: 'handToBot', member: 'm2' } }, T0 + 3 * IDLE_HANDOFF);
+    expect(memberNamed(s, 't1', 'Dita').botControlled).toBe(true);
+  });
+
+  test('o snapshot diz há quanto tempo cada pessoa não age, para quem decide passar uma cadeira', () => {
+    const s = scripted();
+    s.feed({ kind: 'message', token: 't1', message: { type: 'raise' } }, T0 + 10_000);
+    expect(s.snapshotFor('t3')!.members.map((m) => [m.nickname, m.idle])).toEqual([['Zé', 0], ['Dita', 10_000], ['Nena', 10_000], ['Tião', 0], ['Bastião', 0]]);
+  });
+
+  test('na revanche ninguém mais é bot: quem caiu volta ao lobby na própria cadeira com a tolerância de sempre, e depois dela a cadeira fica livre', () => {
+    const s = scripted();
+    s.feed({ kind: 'disconnect', token: 't2' });
+    s.fire(dropOf(s)); // um bot joga por Dita até o fim
+    run(s, undefined, [['t1', 0]]);
+    expect(s.state.members.find((m) => m.token === 't2')).toMatchObject({ seat: 2, connected: false, botControlled: true });
     s.say('t1', { type: 'rematch' });
+    expect(s.snapshotFor('t1')!.members.map((m) => [m.nickname, m.seat, m.connected, m.botControlled])).toEqual([['Zé', 0, true, false], ['Dita', 2, false, false], ['Nena', null, true, false]]);
     expect(s.state.timers).toContainEqual({ kind: 'drop', token: 't2', at: s.now + DISCONNECT_GRACE });
-    s.fire(s.state.timers.find((t) => t.kind === 'drop')!);
+    s.fire(dropOf(s));
     expect(s.snapshotFor('t1')!.members.map((m) => m.nickname)).toEqual(['Zé', 'Nena']);
     s.sit('t3', 0);
     expect(s.snapshotFor('t3')!.members.map((m) => [m.nickname, m.seat])).toEqual([['Zé', 0], ['Nena', 2]]);

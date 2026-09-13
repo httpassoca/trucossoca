@@ -51,6 +51,8 @@ export class RemoteTable implements Table {
   private timer: unknown;
   private disposed = false;
   private joinedAs: string | null = null;
+  /** o servidor mandou algo desde o último ping? um intervalo inteiro sem nada = a conexão morreu sem avisar */
+  private heardSincePing = false;
   /** eventos que chegaram e esperam o snapshot que os causou */
   private pendingEvents: GameEvent[] = [];
   /** eventos publicados quando ninguém ouvia (a tela da mesa monta depois do snapshot que começa a partida) */
@@ -88,7 +90,7 @@ export class RemoteTable implements Table {
     const ws = this.makeSocket(url);
     this.socket = ws;
     this.set({ status: this.st.attempt ? 'reconnecting' : 'connecting' });
-    ws.onopen = () => { if (this.socket !== ws) return; this.set({ status: 'open', attempt: 0 }); this.schedulePing(); };
+    ws.onopen = () => { if (this.socket !== ws) return; this.heardSincePing = true; this.set({ status: 'open', attempt: 0 }); this.schedulePing(); };
     ws.onmessage = (ev: { data: unknown }) => { if (this.socket === ws) this.receive(String(ev.data)); };
     ws.onerror = () => {};
     ws.onclose = (ev: { code: number }) => { if (this.socket === ws) this.lost(ev.code); };
@@ -96,6 +98,14 @@ export class RemoteTable implements Table {
 
   /** Reconecta agora, se estava esperando (ex.: o navegador voltou a ter rede). */
   retryNow() { if (this.st.status === 'reconnecting' && !this.socket) this.connect(); }
+  /** Dá o socket atual por morto (ex.: o navegador perdeu a rede) e volta a tentar com a espera de sempre. */
+  reconnect() {
+    if (this.disposed) return;
+    const ws = this.socket; if (!ws) return;
+    this.socket = null;
+    ws.close(1000, 'sem rede');
+    this.lost(1006); // "fechou sem motivo": não é um código 4xxx do servidor, então reconecta
+  }
 
   // sala
   join(nickname: string) { this.joinedAs = nickname; this.send({ type: 'join', nickname }); }
@@ -106,6 +116,8 @@ export class RemoteTable implements Table {
   setRules(rules: Rules) { this.send({ type: 'rules', rules }); }
   setGhostsSeeCards(on: boolean) { this.send({ type: 'ghostsSeeCards', on }); }
   start() { this.send({ type: 'start' }); }
+  /** passa a cadeira de outra pessoa sentada, parada há `IDLE_HANDOFF`, a um bot (o servidor confere) */
+  handToBot(member: string) { this.send({ type: 'handToBot', member }); }
 
   // mesa — cada jogada é uma mensagem pela cadeira local; o servidor decide
   /** no fim de jogo: revanche, que devolve a sala ao lobby */
@@ -134,6 +146,7 @@ export class RemoteTable implements Table {
   private receive(raw: string) {
     let msg: ServerMessage;
     try { msg = JSON.parse(raw); } catch { return; }
+    this.heardSincePing = true;
     if (msg.type === 'events') { this.pendingEvents.push(...msg.events); return; }
     if (msg.type !== 'snapshot') return; // pong e erros: nada a fazer
     this.set({ room: msg.snapshot });
@@ -157,7 +170,7 @@ export class RemoteTable implements Table {
     const seat = me?.seat ?? null;
     const seats: SeatView[] = [0, 1, 2, 3].map((s) => {
       const m = room?.members.find((o) => o.seat === s);
-      return { name: m?.nickname ?? EMPTY_SEAT, bot: m?.bot ?? false };
+      return { name: m?.nickname ?? EMPTY_SEAT, bot: m?.bot ?? false, botControlled: m?.botControlled ?? false };
     });
     return {
       game, seat, seats, teams: room ? [...room.teams] : [...DEFAULT_TEAM_NAMES], acting: actingFor(game, seat), coverNext: this.coverNext,
@@ -175,9 +188,16 @@ export class RemoteTable implements Table {
     this.timer = this.clock.setTimeout(() => { this.timer = undefined; this.connect(); }, wait);
   }
 
+  /** A cada intervalo: se o servidor não disse nada desde o ping anterior, a conexão morreu sem avisar; senão, ping de novo. */
   private schedulePing() {
     this.clearTimer();
-    this.timer = this.clock.setTimeout(() => { this.timer = undefined; this.send({ type: 'ping' }); this.schedulePing(); }, PING_INTERVAL);
+    this.timer = this.clock.setTimeout(() => {
+      this.timer = undefined;
+      if (!this.heardSincePing) { this.reconnect(); return; }
+      this.heardSincePing = false;
+      this.send({ type: 'ping' });
+      this.schedulePing();
+    }, PING_INTERVAL);
   }
 
   private send(message: ClientMessage) { if (this.st.status === 'open') this.socket?.send(JSON.stringify(message)); }

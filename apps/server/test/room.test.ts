@@ -132,6 +132,16 @@ describe('sala: conexão', () => {
     expect(s.state.timers.filter((t) => t.kind === 'drop')).toEqual([]);
   });
 
+  test('queda notada pelo silêncio: a tolerância conta desde o último sinal de vida, e vence na hora se já passou', () => {
+    const s = new Sim();
+    s.connect('t1'); s.join('t1', 'Zé');
+    s.feed({ kind: 'disconnect', token: 't1', since: T0 - 5_000 }, T0);
+    expect(s.state.timers).toContainEqual({ kind: 'drop', token: 't1', at: T0 + DISCONNECT_GRACE - 5_000 });
+    s.connect('t1');
+    s.feed({ kind: 'disconnect', token: 't1', since: T0 - 30_000 }, T0);
+    expect(s.state.timers).toContainEqual({ kind: 'drop', token: 't1', at: T0 });
+  });
+
   test('um timer que já não está pendente é ignorado', () => {
     const s = new Sim();
     s.connect('t1'); s.join('t1', 'Zé');

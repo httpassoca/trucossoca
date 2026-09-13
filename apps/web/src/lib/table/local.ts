@@ -92,7 +92,7 @@ export class LocalTable implements Table {
   private takeSnapshot(): TableSnapshot {
     return {
       game: viewFor(this.game, 'all'), seat: this.seat, acting: this.acting(), coverNext: this.coverNext,
-      seats: LOCAL_NAMES.map((name, s) => ({ name, bot: this.settings.bots && s !== 0 })), teams: [...DEFAULT_TEAM_NAMES],
+      seats: LOCAL_NAMES.map((name, s) => ({ name, bot: this.settings.bots && s !== 0, botControlled: false })), teams: [...DEFAULT_TEAM_NAMES],
       canRaise: canRaise(this.game, this.seat), canCover: coverAllowed(this.game), rulesEditable: true, restart: 'newGame',
     };
   }

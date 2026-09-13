@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test';
-import { parseClientMessage, type RoomSnapshot, type ServerMessage } from '@truco/protocol';
+import { parseClientMessage, SOCKET_IDLE_TIMEOUT, type RoomSnapshot, type ServerMessage } from '@truco/protocol';
 import { teamOf, type GameEvent, type Seat } from '@truco/rules';
-import { createRoom, step, timerKey, type RoomInput, type RoomState, type RoomTimer } from '../../server/src/room';
+import { createRoom, DISCONNECT_GRACE, step, timerKey, type RoomInput, type RoomState, type RoomTimer } from '../../server/src/room';
 import { RemoteTable, type SocketLike } from '../src/lib/table/remote';
 import type { Table, TableSnapshot } from '../src/lib/table/table';
 import { ManualClock } from './manual-clock';
@@ -10,11 +10,13 @@ import { seeded } from './seeded';
 /**
  * A sala de verdade (`step`) atrás de sockets falsos: cada mensagem atravessa o cano num timer de zero,
  * como pela rede, e os timers que a sala pede vencem no mesmo relógio manual. Sem servidor, sem porta.
+ * Como o host, derruba quem fica `SOCKET_IDLE_TIMEOUT` sem mandar nada, contando a tolerância desde o último sinal.
  */
 class Pipe {
   state: RoomState;
   private readonly sockets = new Map<string, PipeSocket>();
   private readonly handles = new Map<string, unknown>();
+  private readonly silences = new Map<PipeSocket, { handle: unknown; heardAt: number }>();
   private readonly rng = seeded(11);
   constructor(private readonly clock: ManualClock) {
     this.state = createRoom('ABCD', clock.now, { botDelay: 50, handPause: 100 });
@@ -24,12 +26,26 @@ class Pipe {
     const token = new URL(url).searchParams.get('token')!;
     const ws = new PipeSocket(this, token);
     this.sockets.set(token, ws);
-    this.clock.setTimeout(() => { ws.onopen?.({}); this.apply({ kind: 'connect', token }); }, 0);
+    this.clock.setTimeout(() => { ws.onopen?.({}); this.heard(ws); this.apply({ kind: 'connect', token }); }, 0);
     return ws;
   }
-  fromClient(token: string, raw: string) {
+  /** A rede desta pessoa morreu sem fechar nada: o socket vira um buraco (nada sai, nada chega); só o silêncio denuncia. */
+  drop(token: string) { const ws = this.sockets.get(token); if (ws) ws.dead = true; }
+  fromClient(ws: PipeSocket, token: string, raw: string) {
     const message = parseClientMessage(raw); if (!message) throw new Error(`mensagem fora do protocolo: ${raw}`);
+    this.heard(ws);
     this.clock.setTimeout(() => this.apply({ kind: 'message', token, message }), 0);
+  }
+  private heard(ws: PipeSocket) {
+    const prev = this.silences.get(ws); if (prev) this.clock.clearTimeout(prev.handle);
+    const heardAt = this.clock.now;
+    const handle = this.clock.setTimeout(() => {
+      this.silences.delete(ws);
+      if (this.sockets.get(ws.token) !== ws) return;
+      this.sockets.delete(ws.token);
+      this.apply({ kind: 'disconnect', token: ws.token, since: heardAt });
+    }, SOCKET_IDLE_TIMEOUT);
+    this.silences.set(ws, { handle, heardAt });
   }
   private apply(input: RoomInput) {
     const r = step(this.state, input, this.clock.now, { rng: this.rng });
@@ -49,14 +65,15 @@ class Pipe {
 
 class PipeSocket implements SocketLike {
   received: ServerMessage[] = [];
+  dead = false;
   onopen: ((ev: unknown) => void) | null = null;
   onmessage: ((ev: { data: unknown }) => void) | null = null;
   onclose: ((ev: { code: number; reason: string }) => void) | null = null;
   onerror: (() => void) | null = null;
-  constructor(private readonly pipe: Pipe, private readonly token: string) {}
-  send(data: string) { this.pipe.fromClient(this.token, data); }
+  constructor(private readonly pipe: Pipe, readonly token: string) {}
+  send(data: string) { if (!this.dead) this.pipe.fromClient(this, this.token, data); }
   close() { this.onclose?.({ code: 1005, reason: '' }); }
-  deliver(message: ServerMessage) { this.received.push(message); this.onmessage?.({ data: JSON.stringify(message) }); }
+  deliver(message: ServerMessage) { if (this.dead) return; this.received.push(message); this.onmessage?.({ data: JSON.stringify(message) }); }
   get snapshots() { return this.received.filter((m): m is ServerMessage & { type: 'snapshot' } => m.type === 'snapshot').map((m) => m.snapshot); }
   get events() { return this.received.filter((m): m is ServerMessage & { type: 'events' } => m.type === 'events').flatMap((m) => m.events); }
   get errors() { return this.received.filter((m) => m.type === 'error'); }
@@ -150,5 +167,56 @@ describe('partida online pelo cano: RemoteTable ↔ sala', () => {
     expect(room(dita)!.members.map((m) => [m.nickname, m.seat, m.bot])).toEqual([['Zé', 0, false], ['Dita', 1, false]]);
     expect(dita.table.snapshot.game.hand).toBeNull();
     expect(dita.table.snapshot.seat).toBe(1);
+  });
+
+  test('quem perde a rede no meio da partida: um bot joga por ela em vinte segundos, e ao voltar ela retoma sem recarregar', () => {
+    const clock = new ManualClock();
+    const pipe = new Pipe(clock);
+    const ze = member(pipe, clock, 'token-ze'), dita = member(pipe, clock, 'token-dita');
+    const room = (m: { table: RemoteTable }) => m.table.state.room;
+    const ditaSeen = (m: { table: RemoteTable }) => room(m)!.members.find((x) => x.nickname === 'Dita')!;
+    clock.settle();
+    ze.table.join('Zé'); dita.table.join('Dita'); clock.settle();
+    ze.table.takeSeat(0); dita.table.takeSeat(1); clock.settle();
+    ze.table.start();
+    clock.runUntil(() => room(ze)?.phase === 'playing' && room(dita)?.phase === 'playing');
+    const seen: GameEvent[] = [];
+    ze.table.subscribe((_s, ev) => seen.push(...ev));
+    person(ze.table, clock);
+    const statuses: string[] = [];
+    dita.table.watch((s) => { if (statuses[statuses.length - 1] !== s.status) statuses.push(s.status); });
+
+    // a rede de Dita morre: a aba dela não nota nada na hora, mas o servidor sim
+    const ditaSocket = dita.socket;
+    const t0 = clock.now;
+    pipe.drop('token-dita');
+    expect(dita.table.state.status).toBe('open');
+    clock.runUntil(() => ditaSeen(ze).botControlled);
+    // o servidor só nota pelo silêncio (30 s desde o último ping), e a tolerância de 20 s já passou: o bot entra na hora
+    expect(clock.now - t0).toBeLessThanOrEqual(SOCKET_IDLE_TIMEOUT);
+    expect(clock.now - t0).toBeGreaterThan(DISCONNECT_GRACE);
+    expect(ditaSeen(ze)).toMatchObject({ seat: 1, connected: false, bot: false, botControlled: true });
+    expect(ze.table.snapshot.seats[1]).toEqual({ name: 'Dita', bot: false, botControlled: true });
+    // e o bot joga pela cadeira 1
+    const before = seen.length;
+    clock.runUntil(() => seen.slice(before).some((e) => e.type === 'play' && e.seat === 1) || ze.table.snapshot.game.over);
+    expect(ze.table.snapshot.game.over).toBe(false);
+
+    // a aba de Dita nota o silêncio, reconecta sozinha e retoma a cadeira; a partida segue com ela
+    clock.runUntil(() => dita.socket !== ditaSocket && dita.table.state.status === 'open' && !ditaSeen(dita).botControlled);
+    clock.settle(); // o snapshot da retomada chega a Zé pelo cano
+    expect(clock.now - t0).toBeLessThanOrEqual(SOCKET_IDLE_TIMEOUT + 1_000); // a aba nota o silêncio no mesmo prazo e volta com a espera mínima
+    expect(statuses).toEqual(['reconnecting', 'open']); // ela passou por "sem conexão" e voltou
+    expect(dita.table.snapshot.seat).toBe(1);
+    expect(ditaSeen(ze)).toMatchObject({ connected: true, botControlled: false });
+    expect(ze.table.snapshot.seats[1]).toEqual({ name: 'Dita', bot: false, botControlled: false });
+    const h = dita.table.snapshot.game.hand!;
+    if (h.phase !== 'over') expect(h.cards[1].some((c) => c !== null)).toBe(true);
+    for (const other of [0, 2, 3] as const) expect(h.cards[other].every((c) => c === null)).toBe(true);
+    person(dita.table, clock);
+    clock.runUntil(() => ze.table.snapshot.game.over && dita.table.snapshot.game.over, 5_000);
+    expect(ze.table.snapshot.game.scores).toEqual(dita.table.snapshot.game.scores);
+    expect(dita.socket.errors).toEqual([]);
+    expect(ditaSocket.dead).toBe(true);
   });
 });

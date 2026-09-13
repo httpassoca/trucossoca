@@ -1,7 +1,10 @@
-import { CLOSE_REPLACED, CLOSE_ROOM_ENDED, parseClientMessage } from '@truco/protocol';
+import { CLOSE_REPLACED, CLOSE_ROOM_ENDED, parseClientMessage, SOCKET_IDLE_TIMEOUT } from '@truco/protocol';
 import type { ServerWebSocket } from 'bun';
 import type { Log } from './log';
 import { createRoom, DEFAULT_PACE, step, timerKey, type RoomInput, type RoomPace, type RoomState } from './room';
+
+/** `now`: hora de nascimento; `pace`: ritmo da mesa; `silence`: quanto um socket pode ficar sem mandar nada antes de ser derrubado. */
+export interface HostOptions { now?: number; pace?: RoomPace; silence?: number }
 
 export interface SocketData { code: string; token: string }
 export type Socket = ServerWebSocket<SocketData>;
@@ -9,14 +12,23 @@ export type Socket = ServerWebSocket<SocketData>;
 /**
  * Adaptador de uma sala: guarda os sockets por token, entrega as mensagens que a sala manda e agenda
  * os timers que ela pede (`state.timers`), nunca os seus. Quando a sala morre, fecha todo mundo e avisa.
+ * O único timer próprio é o de silêncio: um socket que não manda nada (nem `ping`) por `silence` ms é
+ * derrubado como se tivesse caído, e a sala fica sabendo desde quando a pessoa está muda (a tolerância
+ * dela conta dali). A rede que morre sem fechar o socket não chega de outro jeito; o `idleTimeout` do Bun
+ * é a rede de segurança abaixo deste.
  */
 export class RoomHost {
   state: RoomState;
   private readonly sockets = new Map<string, Socket>();
   private readonly handles = new Map<string, ReturnType<typeof setTimeout>>();
+  /** por socket: o timer de silêncio e quando ele mandou algo pela última vez */
+  private readonly silences = new Map<Socket, { handle: ReturnType<typeof setTimeout>; heardAt: number }>();
+  private readonly silence: number;
 
-  constructor(code: string, private readonly log: Log, private readonly onDead: (code: string) => void, now = Date.now(), pace: RoomPace = DEFAULT_PACE) {
-    this.state = createRoom(code, now, pace);
+  constructor(code: string, private readonly log: Log, private readonly onDead: (code: string) => void, opts: HostOptions = {}) {
+    const now = opts.now ?? Date.now();
+    this.silence = opts.silence ?? SOCKET_IDLE_TIMEOUT;
+    this.state = createRoom(code, now, opts.pace ?? DEFAULT_PACE);
     this.syncTimers(now);
     log('room.created', { room: code });
   }
@@ -28,17 +40,16 @@ export class RoomHost {
     const prev = this.sockets.get(ws.data.token);
     this.sockets.set(ws.data.token, ws);
     // mesma pessoa, socket novo (aba duplicada, ou voltou antes de o servidor notar a queda): o velho sai sem avisar a sala
-    if (prev && prev !== ws) prev.close(CLOSE_REPLACED, 'outra aba assumiu');
+    if (prev && prev !== ws) { this.clearSilence(prev); prev.close(CLOSE_REPLACED, 'outra aba assumiu'); }
+    this.resetSilence(ws);
     this.apply({ kind: 'connect', token: ws.data.token }); // para quem já está conectado, a sala só reenvia o snapshot
   }
 
-  disconnect(ws: Socket) {
-    if (this.sockets.get(ws.data.token) !== ws) return; // já substituído por outra aba
-    this.sockets.delete(ws.data.token);
-    this.apply({ kind: 'disconnect', token: ws.data.token });
-  }
+  /** O socket fechou (o Bun avisou). */
+  disconnect(ws: Socket) { this.drop(ws); }
 
   message(ws: Socket, raw: string | Buffer) {
+    this.resetSilence(ws);
     const message = parseClientMessage(typeof raw === 'string' ? raw : raw.toString());
     if (!message) { this.log('room.badMessage', { room: this.code, token: ws.data.token.slice(0, 8) }); return; }
     this.apply({ kind: 'message', token: ws.data.token, message });
@@ -54,11 +65,44 @@ export class RoomHost {
       this.log(`room.${type}`, { room: this.code, ...fields });
     }
     if (state.phase === 'dead') {
-      for (const ws of this.sockets.values()) ws.close(CLOSE_ROOM_ENDED, 'sala encerrada por inatividade');
+      for (const ws of this.sockets.values()) { this.clearSilence(ws); ws.close(CLOSE_ROOM_ENDED, 'sala encerrada por inatividade'); }
       this.sockets.clear();
     }
     this.syncTimers(now);
     if (state.phase === 'dead') this.onDead(this.code);
+  }
+
+  /** Cancela todo timer e deixa a sala como está: para um teste (ou o processo) terminar sem nada pendente. */
+  dispose() {
+    for (const h of this.handles.values()) clearTimeout(h);
+    this.handles.clear();
+    for (const ws of this.sockets.values()) this.clearSilence(ws);
+  }
+
+  /** Tira o socket da sala; `since` = desde quando ele estava mudo, quando foi o silêncio que o derrubou. */
+  private drop(ws: Socket, since?: number) {
+    this.clearSilence(ws);
+    if (this.sockets.get(ws.data.token) !== ws) return; // já substituído por outra aba, ou já derrubado pelo silêncio
+    this.sockets.delete(ws.data.token);
+    this.apply(since === undefined ? { kind: 'disconnect', token: ws.data.token } : { kind: 'disconnect', token: ws.data.token, since });
+  }
+
+  /** Este socket deu sinal de vida: o silêncio dele recomeça a contar do zero. */
+  private resetSilence(ws: Socket) {
+    this.clearSilence(ws);
+    const heardAt = Date.now();
+    const handle = setTimeout(() => {
+      this.silences.delete(ws);
+      this.log('room.silent', { room: this.code, token: ws.data.token.slice(0, 8) });
+      this.drop(ws, heardAt);
+      ws.terminate();
+    }, this.silence);
+    this.silences.set(ws, { handle, heardAt });
+  }
+
+  private clearSilence(ws: Socket) {
+    const s = this.silences.get(ws);
+    if (s) { clearTimeout(s.handle); this.silences.delete(ws); }
   }
 
   /** Agenda o que a sala pede e cancela o que ela deixou de pedir; cada timer é identificado pelo seu conteúdo. */

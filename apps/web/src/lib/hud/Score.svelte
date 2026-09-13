@@ -26,6 +26,7 @@
   <div class="foot">
     <span>{turn}</span>
     {#if snap.seat === null}<span class="ss-badge neutral">fantasma</span>{/if}
+    {#if snap.seat !== null && snap.seats[snap.seat].botControlled}<span class="ss-badge caution" title="você ficou parada e alguém passou a cadeira a um bot; qualquer jogada sua a retoma">bot joga por você · jogue para retomar</span>{/if}
     {#if h && h.special !== 'normal'}<span class="ss-badge caution">{h.special === 'dez' ? 'mão de dez' : 'mão de ferro'}</span>{/if}
   </div>
 </div>

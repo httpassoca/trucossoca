@@ -17,7 +17,7 @@ export class Rooms {
   create(): RoomHost {
     let code: string;
     do { code = Array.from({ length: CODE_LENGTH }, () => CODE_ALPHABET[Math.floor(this.random() * CODE_ALPHABET.length)]).join(''); } while (this.rooms.has(code));
-    const host = new RoomHost(code, this.log, (c) => { this.rooms.delete(c); this.log('room.removed', { room: c, rooms: this.rooms.size }); }, Date.now(), this.pace);
+    const host = new RoomHost(code, this.log, (c) => { this.rooms.delete(c); this.log('room.removed', { room: c, rooms: this.rooms.size }); }, { pace: this.pace });
     this.rooms.set(code, host);
     return host;
   }

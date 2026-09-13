@@ -83,8 +83,12 @@ Pessoa na sala sem cadeira. Anda livremente pela mesa, é vista por todos e não
 _Evitar_: espectador, observador, viewer
 
 **Bot** (`bot`):
-Ocupante de cadeira controlado pelo servidor. Preenche cadeiras vazias e assume a cadeira de quem se desconecta.
+Ocupante de cadeira controlado pelo servidor. Preenche cadeiras vazias e joga pela cadeira de quem cai (depois de vinte segundos) ou fica parada (depois de um minuto, quando outra pessoa sentada passa a cadeira), até a pessoa voltar ou agir; a cadeira continua sendo dela.
 _Evitar_: IA, CPU, NPC
+
+**Cadeira assumida** (`botControlled`):
+Cadeira de uma pessoa por quem um bot joga no momento: ela caiu por vinte segundos (**tomada**, `botTakeover`), ou ficou parada por um minuto e outra pessoa sentada a **passou** a um bot (`handToBot`). Continua sendo dela: **retoma** (`reclaimed`) ao voltar ou ao agir.
+_Evitar_: substituição, expulsão, kick, bot temporário
 
 **Revanche** (`rematch`):
 No fim de jogo, qualquer pessoa sentada pede revanche e a sala inteira volta ao lobby com as mesmas cadeiras, os mesmos nomes de dupla e as mesmas regras; os bots saem e voltam ao começar.

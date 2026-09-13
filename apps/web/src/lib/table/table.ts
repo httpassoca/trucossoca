@@ -1,8 +1,8 @@
 import { DEFAULT_TEAM_NAMES } from '@truco/protocol';
 import { createGame, responderSeat, teamOf, viewFor, type CardId, type DezAction, type GameEvent, type GameReadable, type GameView, type RespondAction, type Seat } from '@truco/rules';
 
-/** Quem ocupa cada cadeira, como a interface mostra. */
-export interface SeatView { name: string; bot: boolean }
+/** Quem ocupa cada cadeira, como a interface mostra: `bot` é um bot de verdade; `botControlled`, uma pessoa por quem um bot joga enquanto ela está ausente. */
+export interface SeatView { name: string; bot: boolean; botControlled: boolean }
 
 /**
  * O que a mesa mostra a este cliente. É um objeto novo a cada mudança, nunca mutado no lugar,
@@ -62,7 +62,7 @@ export function actingFor(g: GameReadable, seat: Seat | null): Seat | -1 {
 /** Mesa sem partida e sem ninguém: o que a interface mostra antes de uma mesa ser encaixada. */
 export function emptySnapshot(): TableSnapshot {
   return {
-    game: viewFor(createGame(), 'all'), seat: null, seats: [0, 1, 2, 3].map(() => ({ name: '', bot: false })), teams: [...DEFAULT_TEAM_NAMES],
+    game: viewFor(createGame(), 'all'), seat: null, seats: [0, 1, 2, 3].map(() => ({ name: '', bot: false, botControlled: false })), teams: [...DEFAULT_TEAM_NAMES],
     acting: -1, coverNext: false, canRaise: false, canCover: false, rulesEditable: false, restart: null,
   };
 }
