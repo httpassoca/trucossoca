@@ -59,7 +59,21 @@ apps/web         Vite + Svelte 5 + Threlte 8 + three, HUD em dssoca
   src/lib/scene/            builders (personagens/cartas procedurais), throw (onde a carta cai), layout (cartas ocultas e o
                             monte são desenhados com as 40 cartas físicas que a pessoa não vê em lugar nenhum), gaze, World.svelte
   src/lib/hud/              Score, Seats, Keys, Log, Prompt, Menu (regras trancadas online), RulesForm, Seg, Switch (markup vanilla do dssoca)
+
+Dockerfile        imagem oficial do Bun em duas etapas: builda o cliente, roda o servidor (ver Deploy)
+.github/workflows deploy.yml: push na main → check, test, scp para o VPS, docker build/stop/start, sonda
+deploy/           wizard.sh (passos humanos do deploy) e truco.passoca.dev.nginx (bloco do nginx com upgrade de WebSocket)
 ```
+
+## Deploy
+
+Um push na `main` põe o jogo em https://truco.passoca.dev (ADR 0001): o workflow `.github/workflows/deploy.yml` roda `check` e
+`test`, copia o repo para o VPS por scp e, por SSH, roda `npm run docker:build` / `docker:stop` / `docker:start` (scripts na raiz;
+o container escuta em `127.0.0.1:3002`, atrás do nginx, ao lado do passoca-api) e sonda `/health` e a raiz: sem resposta, o run
+falha. O `Dockerfile` (imagem oficial do Bun, duas etapas) builda o cliente e roda o servidor; `bun run docker:build && bun run
+docker:start` reproduz o container localmente em http://localhost:3002. Os passos humanos (os três segredos `SSH_*` do repo,
+o registro DNS, o bloco do nginx em `deploy/truco.passoca.dev.nginx` com upgrade de WebSocket e o certbot) são guiados por
+`bash deploy/wizard.sh`, que termina provando HTTPS e o handshake `wss://` de fora.
 
 ## Decisões
 

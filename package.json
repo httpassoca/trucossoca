@@ -8,7 +8,10 @@
     "start": "bun apps/server/src/index.ts",
     "check": "bun run --filter @truco/web --filter @truco/server --filter @truco/protocol check",
     "test": "bun test",
-    "preview": "bun run --filter @truco/web preview"
+    "preview": "bun run --filter @truco/web preview",
+    "docker:build": "docker build --tag trucossoca .",
+    "docker:start": "docker run --name trucossoca -d --restart unless-stopped -p 127.0.0.1:3002:3000 trucossoca",
+    "docker:stop": "docker stop trucossoca && docker rm trucossoca"
   },
   "devDependencies": {
     "bun-types": "^1.4.2"
