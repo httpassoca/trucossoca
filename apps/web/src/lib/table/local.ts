@@ -3,7 +3,7 @@ import {
   respond, startHand, takeEvents, viewFor,
   type CardId, type DezAction, type GameEvent, type GameState, type RespondAction, type Rng, type Rules, type Seat,
 } from '@truco/rules';
-import { DEFAULT_TEAM_NAMES } from '@truco/protocol';
+import { DEFAULT_SCENERY, DEFAULT_TEAM_NAMES, type SceneryId } from '@truco/protocol';
 import { realClock, type Clock } from './clock';
 import { actingFor, type Table, type TableListener, type TableSnapshot } from './table';
 
@@ -11,7 +11,7 @@ import { actingFor, type Table, type TableListener, type TableSnapshot } from '.
  * Lidas ao vivo: regras aplicam na próxima mão, bots e ritmo na próxima ação; `you` (o nome da cadeira 0) e `teams` (os nomes
  * das duplas), na língua da pessoa, no próximo snapshot. Sem eles, os nomes em português.
  */
-export interface LocalSettings { rules: Rules; bots: boolean; botDelay: number; you?: string; teams?: [string, string] }
+export interface LocalSettings { rules: Rules; bots: boolean; botDelay: number; you?: string; teams?: [string, string]; scenery?: SceneryId }
 
 /** Quem senta na mesa offline: a pessoa na cadeira 0 e três bots. */
 export const LOCAL_NAMES = ['Você', 'Tião', 'Dita', 'Zé'] as const;
@@ -29,6 +29,7 @@ export class LocalTable implements Table {
   private game: GameState;
   private seat: Seat = 0;
   private coverNext = false;
+  private scenery: SceneryId;
   private snap: TableSnapshot;
   private timer: unknown;
   private readonly listeners = new Set<TableListener>();
@@ -38,6 +39,7 @@ export class LocalTable implements Table {
   constructor(private readonly settings: LocalSettings, opts: { rng?: Rng; clock?: Clock } = {}) {
     this.rng = opts.rng ?? Math.random;
     this.clock = opts.clock ?? realClock;
+    this.scenery = settings.scenery ?? DEFAULT_SCENERY;
     this.game = createGame(settings.rules);
     this.snap = this.takeSnapshot();
   }
@@ -76,6 +78,11 @@ export class LocalTable implements Table {
   /** offline ninguém mais está na mesa: presença não vai nem vem */
   setPresence() {}
   presenceOf() { return undefined; }
+  setScenery(scenery: SceneryId) {
+    if (scenery === this.scenery) return;
+    this.scenery = scenery;
+    this.publish([]);
+  }
 
   private newHand() {
     this.clearTimer();
@@ -99,7 +106,7 @@ export class LocalTable implements Table {
     return {
       game: viewFor(this.game, this.settings.bots ? 0 : 'all'), seat: this.seat, acting: this.acting(), coverNext: this.coverNext,
       seats: LOCAL_NAMES.map((name, s) => ({ name: s === 0 ? this.settings.you ?? name : name, bot: this.settings.bots && s !== 0, botControlled: false })), teams: this.settings.teams ?? [...DEFAULT_TEAM_NAMES], ghosts: [],
-      canRaise: canRaise(this.game, this.seat), canCover: coverAllowed(this.game), rulesEditable: true, restart: 'newGame',
+      canRaise: canRaise(this.game, this.seat), canCover: coverAllowed(this.game), rulesEditable: true, restart: 'newGame', scenery: this.scenery,
     };
   }
 

@@ -1,4 +1,4 @@
-import { DEFAULT_TEAM_NAMES, IDLE_HANDOFF, NICKNAME_MAX, TEAM_NAME_MAX, type ActionError, type ClientMessage, type RoomSnapshot, type ServerMessage } from '@truco/protocol';
+import { DEFAULT_SCENERY, DEFAULT_TEAM_NAMES, IDLE_HANDOFF, NICKNAME_MAX, TEAM_NAME_MAX, type ActionError, type ClientMessage, type RoomSnapshot, type SceneryId, type ServerMessage } from '@truco/protocol';
 import {
   chooseBotDez, chooseBotPlay, chooseBotResponse, createGame, decideDez, defaultRules, eventsFor, playCard, raise, respond, responderSeat,
   startHand, takeEvents, teamOf, viewFor, type CardId, type GameEvent, type GameState, type Perspective, type Rng, type Rules, type Seat, type Team,
@@ -58,6 +58,8 @@ export interface RoomState {
   /** regras da próxima partida; durante a partida, as em vigor estão em `game.rules` */
   rules: Rules;
   ghostsSeeCards: boolean;
+  /** o cenário da sala; troca só no lobby */
+  scenery: SceneryId;
   pace: RoomPace;
   /** a partida inteira, com todas as cartas; só sai daqui filtrada por `snapshotFor` */
   game: GameState | null;
@@ -99,7 +101,7 @@ export function createRoom(code: string, now: number, pace: RoomPace = DEFAULT_P
   return {
     code, phase: 'lobby', createdAt: now, lastActivity: now, members: [], visitors: [], nextId: 1,
     timers: [{ kind: 'death', at: now + ROOM_TTL }],
-    teams: [...DEFAULT_TEAM_NAMES], rules: copyRules(defaultRules), ghostsSeeCards: true, pace: { ...pace }, game: null,
+    teams: [...DEFAULT_TEAM_NAMES], rules: copyRules(defaultRules), ghostsSeeCards: true, scenery: DEFAULT_SCENERY, pace: { ...pace }, game: null,
   };
 }
 
@@ -290,6 +292,9 @@ export function step(state: RoomState, input: RoomInput, now: number, opts: Step
         touch(m);
         s.rules = copyRules(msg.rules);
         broadcast();
+      } else if (msg.type === 'scenery') {
+        touch(m);
+        if (s.scenery !== msg.scenery) { s.scenery = msg.scenery; broadcast(); }
       } else if (msg.type === 'start') {
         if (m.seat === null || !canStart(s)) break;
         fillWithBots(s, now);
@@ -432,6 +437,7 @@ export function snapshotFor(s: RoomState, token: string, now: number): RoomSnaps
     teams: [...s.teams],
     rules: copyRules(s.game ? s.game.rules : s.rules),
     ghostsSeeCards: s.ghostsSeeCards,
+    scenery: s.scenery,
     game: s.game ? viewFor(s.game, from) : null,
   };
 }

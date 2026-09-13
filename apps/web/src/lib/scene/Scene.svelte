@@ -5,7 +5,8 @@
 </script>
 
 <div class="tm-gl">
-  <Canvas shadows toneMapping={THREE.NoToneMapping}>
+  <!-- sombras suaves e ACES: os cenários foram desenhados para esta luz (ADR 0007) -->
+  <Canvas shadows={THREE.PCFSoftShadowMap} toneMapping={THREE.ACESFilmicToneMapping}>
     <World />
   </Canvas>
 </div>

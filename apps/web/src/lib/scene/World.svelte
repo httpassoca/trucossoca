@@ -1,31 +1,46 @@
 <script lang="ts">
   import { T, useTask, useThrelte } from '@threlte/core';
+  import type { SceneryId } from '@truco/protocol';
   import type { Seat } from '@truco/rules';
-  import { onDestroy, onMount } from 'svelte';
+  import { onDestroy, onMount, untrack } from 'svelte';
   import * as THREE from 'three';
   import { bus, freeCamera, myTurn } from '../controller';
   import { rememberedNickname } from '../identity';
   import { bounce, installPointerLock } from '../input';
   import { live, ui } from '../state.svelte';
   import { PRESENCE_INTERVAL, type Presence } from '../table/table';
-  import { buildCards, disposeGhost, ghostOpacity, makeCharacter, makeGhost, makeStool, nameCharacter, nameGhost, sayTo, seatAngle, seatDir, SEAT_R, TABLE_R, TABLE_TOP, type Character, type Ghost } from './builders';
+  import { buildCards, disposeGhost, ghostOpacity, makeCharacter, makeGhost, nameCharacter, nameGhost, sayTo, seatAngle, seatDir, SEAT_R, dressCards, type Character, type Ghost } from './builders';
   import type { Buddy } from './buddy/model';
   import { reactionsFor, type Reaction } from './buddy/reactions';
-  import { angleDelta, BASE_PITCH, BOUNCE_Y, EYE_H, floorAt, FOV, look, nearSeat, presenceStanding, seatSpot, spawnSeat, stance, standSpot, stepWalk, walk, zoom, ZOOM_DIST, ZOOM_FOV } from './camera';
+  import { angleDelta, BASE_PITCH, BOUNCE_Y, EYE_H, floorAt, FOV, look, nearSeat, presenceStanding, seatSpot, spawnSeat, stance, standSpot, stepWalk, walk, walkBounds, zoom, ZOOM_DIST, ZOOM_FOV } from './camera';
   import { aimBuddy, aimPresence } from './gaze';
   import { layoutCards } from './layout';
+  import { SCENERY_BUILDERS } from './scenery';
+  import type { Scenery } from './scenery/scenery';
 
-  const { scene, canvas } = useThrelte();
-  scene.background = new THREE.Color(0x232323);
-  scene.fog = new THREE.Fog(0x232323, 4, 11);
+  const { scene, canvas, renderer } = useThrelte();
 
   const cards = buildCards();
   const SEATS: Seat[] = [0, 1, 2, 3];
   /** offline, a cadeira local chama-se "Você"/"You" conforme a língua: o molho vem do apelido lembrado, para ser o mesmo de quando joga online */
   const molhoKey = (s: Seat, name: string) => (live.snap.restart === 'newGame' && s === live.snap.seat ? rememberedNickname() ?? name : name);
   const chars: Character[] = SEATS.map((s) => makeCharacter(s, live.snap.seats[s].name, live.snap.seats[s].bot, molhoKey(s, live.snap.seats[s].name)));
-  const stools = SEATS.map(makeStool);
   const cardList = Object.values(cards);
+
+  /** o cenário montado agora; troca inteiro quando o snapshot diz outro id (o baralho, a névoa e a cerca vão junto) */
+  let scenery = $state.raw<Scenery | null>(null);
+  const sceneryId = $derived(live.snap.scenery);
+  function mountScenery(id: SceneryId) {
+    if (scenery?.id === id) return;
+    scenery?.dispose();
+    const next = SCENERY_BUILDERS[id]();
+    scene.background = next.background; scene.fog = next.fog;
+    renderer.toneMappingExposure = next.exposure;
+    walkBounds.maxR = next.walkMaxR; walkBounds.floorAt = next.floorAt ?? (() => 0);
+    dressCards(cards, next.deck);
+    scenery = next;
+  }
+  $effect(() => { const id = sceneryId; untrack(() => mountScenery(id)); });
 
   /** os outros fantasmas, um vulto por membro sem cadeira; seguem a presença que mandam (ou ficam parados onde nasceram) */
   let ghosts = $state.raw<Ghost[]>([]);
@@ -59,7 +74,7 @@
   const loop = (b: Buddy, want: 'Idle' | 'Walk') => { if (b.getAnimation() !== want) b.setAnimation(want); };
 
   onMount(() => installPointerLock(canvas));
-  onDestroy(() => { for (const id of timers) clearTimeout(id); for (const c of chars) c.buddy.dispose(); for (const gh of ghosts) disposeGhost(gh); });
+  onDestroy(() => { for (const id of timers) clearTimeout(id); for (const c of chars) c.buddy.dispose(); for (const gh of ghosts) disposeGhost(gh); scenery?.dispose(); });
 
   // relayout sempre que a mesa muda de snapshot (ou a cadeira/carta escolhida); nomes e molhos seguem quem senta; cadeira assumida escurece
   $effect(() => { const s = live.snap; layoutCards(s.game, { view: ui.view, sel: ui.sel, myTurn: myTurn(s, ui.view) }, cards); });
@@ -100,9 +115,10 @@
       g.position.lerp(g.userData.tp, 0.12); g.quaternion.slerp(g.userData.tq, 0.12);
       if (Math.abs(g.userData.b - g.userData.tb) > 0.002) {
         g.userData.b += (g.userData.tb - g.userData.b) * 0.06;
-        for (const m of g.children as THREE.Mesh[]) (m.material as THREE.MeshLambertMaterial).color.setScalar(g.userData.b);
+        for (const m of g.children as THREE.Mesh[]) (m.material as THREE.MeshStandardMaterial).color.setScalar(g.userData.b);
       }
     }
+    scenery?.update(t, dt);
     const cam = camera; if (!cam) return;
     const snap = live.snap, acting = snap.acting, table = live.table;
     const ghost = snap.seat === null, free = freeCamera(snap);
@@ -176,35 +192,14 @@
   });
 </script>
 
-<T.PerspectiveCamera makeDefault fov={FOV} near={0.05} far={50} bind:ref={camera}
+<!-- longe o bastante para o céu e a cidade dos cenários -->
+<T.PerspectiveCamera makeDefault fov={FOV} near={0.05} far={400} bind:ref={camera}
   position={[start.x, start.y, start.z]} rotation={[BASE_PITCH, 0, 0, 'YXZ']} />
 
-<T.HemisphereLight args={[0x8a8a8a, 0x1a1a1a, 0.55]} />
-<T.DirectionalLight position={[2.5, 5, 1.5]} intensity={0.45} castShadow
-  oncreate={(l) => { l.shadow.mapSize.set(2048, 2048); const c = l.shadow.camera; c.left = c.bottom = -4; c.right = c.top = 4; c.updateProjectionMatrix(); }} />
-<T.PointLight position={[0, 2.3, 0]} color={0xffe7c2} intensity={1.4} distance={6.5} decay={1.4} />
-
-<!-- chão + mesa (cenário cinza estático) -->
-<T.Mesh rotation.x={-Math.PI / 2} receiveShadow>
-  <T.PlaneGeometry args={[30, 30]} />
-  <T.MeshLambertMaterial color={0x2e2e2e} />
-</T.Mesh>
-<T.Mesh position.y={TABLE_TOP - 0.04} castShadow receiveShadow>
-  <T.CylinderGeometry args={[TABLE_R, TABLE_R, 0.08, 48]} />
-  <T.MeshLambertMaterial color={0x5d6b5f} />
-</T.Mesh>
-<T.Mesh position.y={TABLE_TOP - 0.02} rotation.x={Math.PI / 2}>
-  <T.TorusGeometry args={[TABLE_R, 0.035, 8, 48]} />
-  <T.MeshLambertMaterial color={0x555049} />
-</T.Mesh>
-<T.Mesh position.y={0.34} castShadow>
-  <T.CylinderGeometry args={[0.12, 0.35, 0.68, 12]} />
-  <T.MeshLambertMaterial color={0x4a4a4a} />
-</T.Mesh>
-
-{#each stools as s, i (i)}
-  <T is={s} />
-{/each}
+<!-- o cenário traz chão, arredores, luzes, mesa e cadeiras -->
+{#if scenery}
+  <T is={scenery.group} />
+{/if}
 {#each chars as c (c.seat)}
   <T is={c.g} />
 {/each}

@@ -158,3 +158,18 @@ describe('perspectiva', () => {
     expect(all.snapshot.game.hand!.cards.every((held) => held.every((c) => c !== null))).toBe(true);
   });
 });
+
+describe('LocalTable: cenário', () => {
+  test('nasce com o cenário pedido (ou o bar) e trocar publica um snapshot novo na hora', () => {
+    const { table } = setup(1, { scenery: 'graveyard' });
+    expect(table.snapshot.scenery).toBe('graveyard');
+    const seen: string[] = [];
+    table.subscribe((s) => seen.push(s.scenery));
+    table.setScenery('bar');
+    expect(seen).toEqual(['bar']);
+    expect(table.snapshot.scenery).toBe('bar');
+    table.setScenery('bar');
+    expect(seen).toEqual(['bar']);
+    expect(setup(1).table.snapshot.scenery).toBe('bar');
+  });
+});

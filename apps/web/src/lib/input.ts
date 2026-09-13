@@ -5,7 +5,7 @@ import { live, ui } from './state.svelte';
 let canvasEl: HTMLCanvasElement | null = null;
 export const isLocked = () => !!canvasEl && document.pointerLockElement === canvasEl;
 
-/** Quem senta quica no banquinho ao pular; pular de novo enquanto quica é levantar. */
+/** Quem senta quica na cadeira ao pular; pular de novo enquanto quica é levantar. */
 export const bounce = { at: 0 };
 const DOUBLE_JUMP = 450;
 

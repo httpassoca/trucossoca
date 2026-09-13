@@ -29,7 +29,7 @@ packages/rules   motor puro em TypeScript — sem DOM, sem three.js. Vai virar a
 packages/protocol  mensagens cliente ↔ servidor (uniões discriminadas nos dois sentidos: sala, jogadas — play, raise,
                    respond, decideDez, rematch —, `takeBotSeat` (fantasma senta no lugar de um bot), `presence` (posição e
                    olhar) e de volta snapshot, lote de eventos, erro de jogada recusada, presença de outro membro, pong),
-                   `RoomSnapshot` (membros com cadeira e bot, duplas, regras, toggle dos fantasmas, `game` como esta
+                   `RoomSnapshot` (membros com cadeira e bot, duplas, regras, toggle dos fantasmas, cenário, `game` como esta
                    pessoa vê), `parseClientMessage` (valida as regras inteiras e as cartas), códigos de fechamento do
                    WebSocket. Importado pelos dois lados.
 
@@ -37,7 +37,7 @@ apps/server      Bun.serve: HTTP (`/health`, `POST /api/rooms`, cliente estátic
   src/room.ts      máquina de estado da sala, pura: `step(state, input, now, { rng, deck })` → estado novo, mensagens
                    por token, eventos para o log; timers como dado em `state.timers` (morte em 10 min, saída 20 s após
                    cair, vez de um bot, mão seguinte). Lobby: sentar numa dupla (primeira cadeira livre), levantar,
-                   renomear dupla, regras, toggle dos fantasmas; `start` (só quem senta) preenche cadeiras vazias com
+                   renomear dupla, regras, cenário, toggle dos fantasmas; `start` (só quem senta) preenche cadeiras vazias com
                    bots, dá a primeira mão e tranca duplas, nomes e regras. Partida: as jogadas de quem senta passam
                    pelos guardas do motor (recusa = `error` só para quem errou), os bots agem quando o timer vence no
                    ritmo da sala (`pace`), truco e mão de dez são da dupla (com gente na dupla, o bot parceiro espera),
@@ -104,16 +104,24 @@ apps/web         Vite + Svelte 5 + Threlte 8 + three, HUD em dssoca
                             parts (as peças do molho: chapéus, cabelos, barbas, óculos, pescoço, roupas, calçados, o que segura, arara),
                             molho (o molho de cada apelido, sorteado pela semente do apelido; bots vestem os seis regionais),
                             reactions (evento → cara, braços e quique de cada cadeira: quem age, a dupla, os adversários)
-  src/lib/scene/            builders (bonecos sentados nos banquinhos, vultos dos fantasmas, cartas: costas dos dois lados para quem
-                            não conhece a carta), throw (onde a carta cai, sorteado da semente da jogada: igual em toda tela), layout
+  src/lib/scene/scenery/    os cenários (ADR 0007), um módulo por id do protocolo, contra uma interface só (`scenery.ts`: grupo, quatro
+                            cadeiras, desenho do baralho, névoa, exposição, cerca, update, dispose): `bar` (bar de esquina no fim de tarde:
+                            calçada, fachada, poste de sódio, mesa e cadeiras de plástico, garrafas, copos, cinzeiro, cachorro caramelo,
+                            mariposas, fumaça do carrinho; baralho estilo Copag), `graveyard` (cemitério à noite sob a lua de sangue: lápides,
+                            criptas, cerca, catedral, corvos, velas e lustre; baralho preto e cobre). `kit.ts`: sorteio semeado, texturas em
+                            canvas (null sem DOM), formas curtas, limpeza. Cada cenário roda sem navegador: cadeiras, alturas e zonas das
+                            cartas são testadas com `bun test`
+  src/lib/scene/            builders (bonecos sentados nas cadeiras do cenário, vultos dos fantasmas, cartas: costas dos dois lados para quem
+                            não conhece a carta, vestidas com o baralho do cenário), throw (onde a carta cai, sorteado da semente da jogada: igual em toda tela), layout
                             (cartas ocultas, a coberta alheia e o monte são desenhados com as 40 cartas físicas que a pessoa não vê em
                             lugar nenhum), gaze (quem senta olha para onde a presença diz e se inclina quanto ela diz; bots olham pelo
-                            jogo), camera (olhar, zoom; andar e pular com gravidade: a mesa é chão elevado, o banquinho também; levantar
-                            e sentar; ler de uma presença se a pessoa está de pé e quanto se inclina), World.svelte (câmera nos olhos
-                            do boneco, sentada ou solta; a própria presença dez vezes por segundo, com altura; um vulto por fantasma;
-                            as reações agendadas com um atraso por boneco)
+                            jogo), camera (olhar, zoom; andar e pular com gravidade: a mesa é chão elevado, o assento também; levantar
+                            e sentar; ler de uma presença se a pessoa está de pé e quanto se inclina; a cerca vem do cenário), World.svelte
+                            (o cenário do snapshot montado inteiro e trocado inteiro; câmera nos olhos do boneco, sentada ou solta; a própria
+                            presença dez vezes por segundo, com altura; um vulto por fantasma; as reações agendadas com um atraso por boneco)
   src/lib/hud/              Score (com o aviso "bot joga por você"), Seats (·bot / ·bot jogando), Keys, Log (com a dica em inglês na linha),
-                            Prompt, Menu (regras trancadas online; seção da sala vinda de fora; idioma), LangSwitch, RulesForm, Seg, Switch
+                            Prompt, Menu (regras trancadas online; seção da sala vinda de fora; idioma; cenário, offline na hora e lembrado
+                            no navegador), LangSwitch, RulesForm, Seg, Switch
                             (markup vanilla do dssoca). Toda frase passa por `t` (i18n): nada de texto solto
 
 Dockerfile        imagem oficial do Bun em duas etapas: builda o cliente, roda o servidor (ver Deploy)
@@ -143,7 +151,7 @@ o registro DNS, o bloco do nginx em `deploy/truco.passoca.dev.nginx` com upgrade
   Vazas passadas escurecem. O motor só dá a semente da jogada (a mesma para todo mundo); a posição é
   derivada dela no cliente (`scene/throw.ts`).
 - **Teclado primeiro.** Mouse só para olhar (pointer lock) e, com o botão direito, chegar perto. Esc solta o mouse e abre o menu.
-  Espaço pula: sentado, quica no banquinho; duas vezes, levanta e anda (WASD) e pula pela mesa, subindo nela se quiser, ainda
+  Espaço pula: sentado, quica na cadeira; duas vezes, levanta e anda (WASD) e pula pela mesa, subindo nela se quiser, ainda
   jogando pela cadeira; Shift perto da cadeira senta de novo. Enter joga a carta escolhida (espaço não).
 - **Bonecos procedurais** (ADR 0006): cada apelido tem o seu molho, sorteado do apelido, igual em toda tela; bots vestem os seis
   molhos regionais. Ninguém vê as cartas dos outros, de pé ou sentado; só fantasmas, quando a sala deixa: uma carta que a pessoa

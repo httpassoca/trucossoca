@@ -116,7 +116,20 @@ describe('lobby: nomes das duplas, regras e fantasmas', () => {
     expect(snap.teams).toEqual(['Nós', 'Eles']);
     expect(snap.rules).toEqual(defaultRules);
     expect(snap.ghostsSeeCards).toBe(true);
+    expect(snap.scenery).toBe('bar');
     expect(snap.game).toBeNull();
+  });
+
+  test('qualquer pessoa troca o cenário no lobby; durante a partida ele fica trancado', () => {
+    const s = new Sim();
+    s.join('t1', 'Zé');
+    s.join('t2', 'Dita');
+    s.say('t2', { type: 'scenery', scenery: 'graveyard' });
+    expect(s.snapshotFor('t1')!.scenery).toBe('graveyard');
+    s.sit('t1', 0);
+    s.start('t1');
+    s.say('t2', { type: 'scenery', scenery: 'bar' });
+    expect(s.snapshotFor('t1')!.scenery).toBe('graveyard');
   });
 
   test('qualquer pessoa da sala renomeia qualquer dupla; nome vazio volta ao padrão', () => {

@@ -1,7 +1,9 @@
 <script lang="ts">
   import type { Snippet } from 'svelte';
   import { canCycleSeats, newGame } from '../controller';
+  import { SCENERIES, type SceneryId } from '@truco/protocol';
   import { t } from '../i18n.svelte';
+  import { rememberScenery } from '../identity';
   import { resume } from '../input';
   import { navigate } from '../route.svelte';
   import { live, ui } from '../state.svelte';
@@ -14,6 +16,9 @@
   /** `room`: a seção da sala (quem está, passar cadeira), que só a tela online sabe montar */
   let { room }: { room?: Snippet } = $props();
   const snap = $derived(live.snap);
+  const sceneryOptions = $derived(SCENERIES.map((s) => [s, t(`scenery.${s}`)] as [SceneryId, string]));
+  /** offline troca na hora e fica lembrado; online o cenário é da sala e só muda no lobby */
+  function pickScenery(s: SceneryId) { rememberScenery(s); live.table?.setScenery(s); }
 
   // dois eixos do dssoca + override do token --ss-accent
   const ACCENTS: Record<string, string> = { '': '', yellow: 'var(--ss-yellow)', cyan: 'var(--ss-cyan)', magenta: 'var(--ss-magenta)', red: 'var(--ss-red)' };
@@ -53,6 +58,7 @@
           <div class="tm-section"><h4>{t('menu.theme')}</h4><Seg value={theme} options={[['dark', t('theme.dark')], ['light', t('theme.light')]]} onselect={(v) => (theme = v)} /></div>
           <div class="tm-section"><h4>{t('menu.accent')}</h4><Seg value={accent} options={[['', t('accent.green')], ['yellow', t('accent.amber')], ['cyan', t('accent.cyan')], ['magenta', t('accent.magenta')], ['red', t('accent.red')]]} onselect={(v) => (accent = v)} /></div>
           <div class="tm-section"><h4>{t('menu.size')}</h4><Seg value={size} options={[['sm', 'sm'], ['md', 'md'], ['lg', 'lg']]} onselect={(v) => (size = v)} /></div>
+          <div class="tm-section"><h4>{t('scenery.label')}</h4><Seg value={snap.scenery} options={sceneryOptions} disabled={!snap.rulesEditable} onselect={pickScenery} /></div>
           <div class="tm-section">
             {#if !snap.rulesEditable}
               <h4>{t('menu.rules')} <span style="text-transform:none;letter-spacing:0">{t('menu.rulesInForce')}</span></h4>

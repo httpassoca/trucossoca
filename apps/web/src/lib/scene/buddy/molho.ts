@@ -7,38 +7,38 @@ import type { ArmPoseName, ExpressionName, Outfit } from './model';
 /** Seis molhos regionais, feitos à mão: os bots vestem estes. */
 export const STATE_OUTFITS: Record<'MG' | 'RJ' | 'RS' | 'AM' | 'PE' | 'MT', Outfit> = {
   MG: { // Uai, sô. Café passado, pão de queijo e calma.
-    skin: '#c98b5a', belly: '#f0dcc0',
+    skin: '#c98b5a',
     hair: { kind: 'flat', color: '#3b2a1e' }, facialHair: { kind: 'mustache', color: '#3b2a1e' },
     top: { kind: 'cardigan', color: '#6b4a2b', accent: '#d9c7a3' }, footwear: { kind: 'sneaker', color: '#5b6f3a' },
     propR: 'coffeeMug', propL: 'paoDeQueijo', expression: 'Calm',
   },
   RJ: { // Sol, sunga, óculos escuros e água de coco.
-    skin: '#8a5a3a', belly: '#c8916a',
+    skin: '#8a5a3a',
     hair: { kind: 'curly', color: '#c99a4a' }, eyewear: { kind: 'sunglasses', color: '#15161a', accent: '#15161a' },
     top: { kind: 'openShirt', color: '#f2c53d', accent: '#1f8a4c' }, neck: { kind: 'canga', color: '#1fa1d2' },
     footwear: { kind: 'flipflop', color: '#1f6fd1', accent: '#f4f0e8' }, propR: 'coconut', propL: 'football', expression: 'Happy',
   },
   RS: { // Chapéu de aba larga, lenço maragato, pala e chimarrão.
-    skin: '#e8b89a', belly: '#f6e6d6',
+    skin: '#e8b89a',
     hair: { kind: 'flat', color: '#2b1d14' }, facialHair: { kind: 'thickMustache', color: '#2b1d14' },
     hat: { kind: 'gaucho', color: '#2a2420', accent: '#c8322b' }, neck: { kind: 'bandana', color: '#c8322b' },
     top: { kind: 'poncho', color: '#7a2e2e', accent: '#e8d8b0' }, footwear: { kind: 'boot', color: '#3a2a1e' },
     propR: 'chimarrao', expression: 'Proud',
   },
   AM: { // Chapéu de palha, tacacá, guaraná e uma arara no ombro.
-    skin: '#a86b3c', belly: '#dcb48c',
+    skin: '#a86b3c',
     hair: { kind: 'long', color: '#1a1412' }, hat: { kind: 'straw', color: '#d8b46a', accent: '#d62828' },
     top: { kind: 'openShirt', color: '#2f8f5b', accent: '#f4d35e' }, pet: { kind: 'arara', side: 'L' },
     footwear: { kind: 'flipflop', color: '#3aa655', accent: '#f4f0e8' }, propR: 'tacaca', expression: 'Laughing',
   },
   PE: { // Frevo na sombrinha, chapéu de couro na cabeça.
-    skin: '#5c3b2a', belly: '#9a6a4a',
+    skin: '#5c3b2a',
     hair: { kind: 'curly', color: '#1a1412' }, hat: { kind: 'leather', color: '#8a5a2b' },
     top: { kind: 'vest', color: '#e63946', accent: '#ffb703', accent2: '#2a9d8f' }, footwear: { kind: 'sneaker', color: '#ffb703' },
     propR: 'sombrinha', expression: 'Cheeky',
   },
   MT: { // Chapéu de carandá, tereré gelado e cara de sol.
-    skin: '#d59a6a', belly: '#f2dcc2',
+    skin: '#d59a6a',
     hair: { kind: 'buzz', color: '#4a3527' }, facialHair: { kind: 'goatee', color: '#4a3527' },
     hat: { kind: 'cowboy', color: '#c9a46a', accent: '#3a2a1e' }, top: { kind: 'jacket', color: '#8b3a2f', accent: '#f1e3c8' },
     footwear: { kind: 'boot', color: '#5a3b22' }, propR: 'terere', expression: 'Smug',
@@ -86,7 +86,7 @@ export function personOutfit(name: string): Outfit {
   const chance = (p: number) => r() < p;
   const skin = from(SKINS), hairColor = from(HAIR_COLORS);
   const o: Outfit = {
-    skin, belly: from(LIGHT),
+    skin,
     hair: { kind: from(HAIRS), color: hairColor },
     footwear: { kind: from(SHOES), color: from(CLOTH), accent: from(LIGHT) },
     expression: from(MOODS),

@@ -32,7 +32,7 @@ export type PartSpec<K extends string> = K | 'none' | ({ kind: K } & Omit<PartOp
 
 /** O molho: cada campo é uma vaga do boneco. */
 export interface Outfit {
-  skin?: string; belly?: string;
+  skin?: string;
   hat?: PartSpec<HatKind>;
   hair?: PartSpec<HairKind>;
   facialHair?: PartSpec<FacialHairKind>;
@@ -154,7 +154,6 @@ export function createBuddy(opts: BuddyOptions = {}): Buddy {
   };
   const mats = {
     body: ghostMat ?? std('skin', '#f2a141', .55),
-    belly: ghostMat ?? std('belly', '#f6ead4', .6),
     white: ghostMat ?? std('eyeWhite', '#ffffff', .35),
     ink: ghostInk ?? std('ink', '#2b2622', .5),
     mouth: ghostInk ?? std('mouthInner', '#5e2430', .6, { side: THREE.DoubleSide }),
@@ -176,10 +175,6 @@ export function createBuddy(opts: BuddyOptions = {}): Buddy {
   const body = mesh('body', new THREE.LatheGeometry(profile, 56), mats.body, rig);
   body.position.y = BODY_Y;
   const torso = new THREE.Group(); torso.name = 'torso'; torso.position.y = BODY_Y; rig.add(torso);
-
-  const belly = mesh('bellyPatch', new THREE.SphereGeometry(0.30, 40, 28), mats.belly, torso);
-  belly.scale.set(0.62, 1.05, 0.22);
-  belly.position.set(0, 0.50, bodyRadiusAt(0.50) * 0.90);
 
   // ---- pernas (o calçado vem do molho) ----
   const legGeo = new THREE.CapsuleGeometry(0.085, 0.22, 8, 20);
@@ -387,8 +382,7 @@ export function createBuddy(opts: BuddyOptions = {}): Buddy {
     uprightProps.length = 0;
     if (!ghost) {
       if (o.skin) mats.body.color.set(o.skin);
-      if (o.belly) mats.belly.color.set(o.belly);
-      baseColors.set(mats.body, mats.body.color.clone()); baseColors.set(mats.belly, mats.belly.color.clone());
+      baseColors.set(mats.body, mats.body.color.clone());
     }
     let r;
     if ((r = pick(HATS, o.hat))) slots.hat.add(r[0](ctx, r[1]));
@@ -398,8 +392,6 @@ export function createBuddy(opts: BuddyOptions = {}): Buddy {
     if ((r = pick(NECK, o.neck))) slots.neck.add(r[0](ctx, r[1]));
     const top = pick(TOPS, o.top);
     if (top) { const tp = top[0](ctx, top[1]); slots.top.add(tp.body); tp.sleeves?.forEach((s, i) => sleeveSlots[i].add(s)); }
-    const topKind = typeof o.top === 'string' ? o.top : o.top?.kind;
-    belly.visible = !(top && (topKind === 'sweater' || topKind === 'jacket'));   // roupa fechada esconde a barriga
     if ((r = pick(PETS, o.pet))) { const p = r[0](ctx, r[1]); const side = r[1].side === 'L' ? -1 : 1; p.position.set(side * (bodyRadiusAt(1.02) + 0.03), 1.03, 0.08); p.rotation.y = side * 0.6; p.scale.setScalar(1.2); slots.pet.add(p); }
     const fw = pick(FOOTWEAR, o.footwear ?? 'sneaker');
     if (fw) shoeSlots.forEach((s, i) => s.add(fw[0](ctx, fw[1], i === 0 ? -1 : 1)));

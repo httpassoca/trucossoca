@@ -1,8 +1,9 @@
-import { MANILHA, RANKS, SUITS, makeDeck, type CardId, type Seat, type Suit } from '@truco/rules';
+import { makeDeck, type CardId, type Seat } from '@truco/rules';
 import * as THREE from 'three';
 import type { Presence } from '../table/table';
-import { BUDDY_HEIGHT, createBuddy, STOOL_H, type Buddy } from './buddy/model';
+import { BUDDY_HEIGHT, createBuddy, type Buddy } from './buddy/model';
 import { outfitFor } from './buddy/molho';
+import type { DeckArt } from './scenery/scenery';
 
 export const TABLE_R = 1.2, TABLE_TOP = 0.76, SEAT_R = 1.62;
 export const CARD_W = 0.19, CARD_H = 0.27;
@@ -12,10 +13,9 @@ export const seatAngle = (s: Seat) => s * Math.PI / 2;
 export const seatDir = (s: Seat) => new THREE.Vector3(Math.sin(seatAngle(s)), 0, Math.cos(seatAngle(s)));
 export const seatRight = (s: Seat) => new THREE.Vector3(Math.cos(seatAngle(s)), 0, -Math.sin(seatAngle(s)));
 
-const flat = (color: number) => new THREE.MeshLambertMaterial({ color });
 const place = <T extends THREE.Object3D>(m: T, x: number, y: number, z: number) => { m.position.set(x, y, z); return m; };
 
-/** O boneco de uma cadeira: senta no banquinho olhando para a mesa, ou anda pela mesa quando a pessoa se levanta. */
+/** O boneco de uma cadeira: senta na cadeira do cenário olhando para a mesa, ou anda pela mesa quando a pessoa se levanta. */
 export interface Character {
   seat: Seat; name: string; bot: boolean; molhoKey: string; g: THREE.Group; buddy: Buddy;
   label: THREE.Sprite; labelOn: THREE.Sprite; bubble: THREE.Sprite; bubbleUntil: number; talkUntil: number;
@@ -31,7 +31,7 @@ const LABEL_Y = BUDDY_HEIGHT + 0.12, BUBBLE_Y = BUDDY_HEIGHT + 0.34;
 /** O boneco olha para +z; a cadeira olha para -z (a mesa): o boneco entra virado. */
 function mount(buddy: Buddy, g: THREE.Group) { buddy.group.rotation.y = Math.PI; g.add(buddy.group); }
 
-/** Boneco sentado no banquinho da cadeira `seat`, com o molho de quem senta (`molhoKey`: o apelido que dá o molho, quando não é o nome mostrado). Origem no chão, sob o banquinho. */
+/** Boneco sentado na cadeira `seat`, com o molho de quem senta (`molhoKey`: o apelido que dá o molho, quando não é o nome mostrado). Origem no chão, sob o assento. */
 export function makeCharacter(seat: Seat, name: string, bot: boolean, molhoKey = name): Character {
   const g = new THREE.Group();
   const buddy = createBuddy({ outfit: outfitFor(molhoKey, bot, 'OnTable') });
@@ -39,7 +39,7 @@ export function makeCharacter(seat: Seat, name: string, bot: boolean, molhoKey =
   mount(buddy, g);
   const label = place(makeTextSprite(name, LABEL_COLOR), 0, LABEL_Y, 0); g.add(label);
   const labelOn = place(makeTextSprite(name, LABEL_ON_COLOR), 0, LABEL_Y, 0); labelOn.visible = false; g.add(labelOn);
-  const bubble = new THREE.Sprite(new THREE.SpriteMaterial({ transparent: true }));
+  const bubble = new THREE.Sprite(new THREE.SpriteMaterial({ transparent: true, toneMapped: false }));
   bubble.position.set(0, BUBBLE_Y, 0); bubble.scale.set(0.7, 0.175, 1); bubble.visible = false; g.add(bubble);
   g.position.copy(seatDir(seat).multiplyScalar(SEAT_R)); g.rotation.y = seatAngle(seat);
   return { seat, name, bot, molhoKey, g, buddy, label, labelOn, bubble, bubbleUntil: 0, talkUntil: 0, standing: false, air: false, bounced: 0, prev: g.position.clone(), reaction: 0 };
@@ -56,20 +56,6 @@ export function nameCharacter(ch: Character, name: string, bot: boolean, molhoKe
   }
 }
 
-/** O banquinho de uma cadeira: fica no lugar quando a pessoa se levanta. */
-export function makeStool(seat: Seat): THREE.Group {
-  const g = new THREE.Group();
-  const wood = flat(0x6b5a48), leg = flat(0x4a3f34);
-  const top = new THREE.Mesh(new THREE.CylinderGeometry(0.30, 0.30, 0.05, 20), wood); top.position.y = STOOL_H - 0.025; top.castShadow = top.receiveShadow = true; g.add(top);
-  for (let i = 0; i < 3; i++) {
-    const a = i * Math.PI * 2 / 3 + Math.PI / 6;
-    const l = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.03, STOOL_H - 0.05, 8), leg);
-    l.position.set(Math.sin(a) * 0.22, (STOOL_H - 0.05) / 2, Math.cos(a) * 0.22); l.castShadow = true; g.add(l);
-  }
-  g.position.copy(seatDir(seat).multiplyScalar(SEAT_R)); g.rotation.y = seatAngle(seat);
-  return g;
-}
-
 function canvasTexture(c: HTMLCanvasElement) { const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t; }
 
 function textTexture(text: string, color: string, size = 40, w = 256, h = 64) {
@@ -80,7 +66,7 @@ function textTexture(text: string, color: string, size = 40, w = 256, h = 64) {
 }
 
 export function makeTextSprite(text: string, color: string) {
-  const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: textTexture(text, color), transparent: true, depthTest: false }));
+  const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: textTexture(text, color), transparent: true, depthTest: false, toneMapped: false }));
   sp.scale.set(0.5, 0.125, 1); return sp;
 }
 
@@ -121,53 +107,36 @@ export function ghostOpacity(gh: Ghost, connected: boolean) {
   for (const m of Object.values(gh.buddy.materials)) m.opacity = m.name === 'ghostInk' ? (connected ? 0.85 : 0.4) : (connected ? 0.4 : 0.18);
 }
 
-/* ---------- cartas procedurais ---------- */
-function roundRect(x: CanvasRenderingContext2D, l: number, t: number, w: number, h: number, r: number) {
-  x.beginPath(); x.moveTo(l + r, t); x.arcTo(l + w, t, l + w, t + h, r); x.arcTo(l + w, t + h, l, t + h, r); x.arcTo(l, t + h, l, t, r); x.arcTo(l, t, l + w, t, r); x.closePath();
-}
-function backTexture() {
-  const c = document.createElement('canvas'); c.width = 256; c.height = 364; const x = c.getContext('2d')!;
-  x.fillStyle = '#f3ead8'; roundRect(x, 0, 0, 256, 364, 20); x.fill();
-  x.fillStyle = '#3a6ea5'; roundRect(x, 14, 14, 228, 336, 14); x.fill();
-  x.strokeStyle = 'rgba(243,234,216,.55)'; x.lineWidth = 2;
-  for (let i = -364; i < 364; i += 22) { x.beginPath(); x.moveTo(i, 0); x.lineTo(i + 364, 364); x.stroke(); x.beginPath(); x.moveTo(i + 364, 0); x.lineTo(i, 364); x.stroke(); }
-  x.fillStyle = '#3a6ea5'; roundRect(x, 30, 30, 196, 304, 10); x.fill();
-  return canvasTexture(c);
-}
-function faceTexture(id: CardId) {
-  const c = document.createElement('canvas'); c.width = 256; c.height = 364; const x = c.getContext('2d')!;
-  const suit = id[1] as Suit; const red = suit === 'h' || suit === 'd'; const col = red ? '#c8402e' : '#1a1a1a';
-  x.fillStyle = '#fbf7ee'; roundRect(x, 0, 0, 256, 364, 20); x.fill();
-  if (MANILHA[id]) { x.strokeStyle = '#e8b53a'; x.lineWidth = 10; roundRect(x, 8, 8, 240, 348, 16); x.stroke(); }
-  x.fillStyle = col; x.textBaseline = 'top';
-  const r = id[0], s = SUITS[suit];
-  x.font = `bold 56px ${UI_FONT}`; x.textAlign = 'left'; x.fillText(r, 18, 14);
-  x.font = '48px sans-serif'; x.fillText(s, 20, 68);
-  x.save(); x.translate(256, 364); x.rotate(Math.PI);
-  x.font = `bold 56px ${UI_FONT}`; x.fillText(r, 18, 14); x.font = '48px sans-serif'; x.fillText(s, 20, 68); x.restore();
-  x.textAlign = 'center'; x.textBaseline = 'middle'; x.font = '150px sans-serif'; x.fillText(s, 128, 190);
-  if (MANILHA[id]) { x.fillStyle = '#b8862b'; x.font = `bold 22px ${UI_FONT}`; x.fillText('MANILHA', 128, 300); }
-  return canvasTexture(c);
-}
-
-/** `known`: a pessoa sabe que carta é (vê a face); senão as duas faces mostram as costas. */
-export interface CardData { tp: THREE.Vector3; tq: THREE.Quaternion; b: number; tb: number; known: boolean; front: THREE.Mesh; face: THREE.Texture; back: THREE.Texture }
+/* ---------- cartas ---------- */
+/** `known`: a pessoa sabe que carta é (vê a face); senão as duas faces mostram as costas. `face`/`back` vêm do cenário (`dressCards`). */
+export interface CardData { tp: THREE.Vector3; tq: THREE.Quaternion; b: number; tb: number; known: boolean; front: THREE.Mesh; face: THREE.Texture | null; back: THREE.Texture | null }
 export type CardGroup = THREE.Group & { userData: CardData & { id: CardId } };
 
+/** As 40 cartas físicas, ainda sem desenho: o cenário veste com `dressCards`. */
 export function buildCards(): Record<CardId, CardGroup> {
-  const back = backTexture();
   const out = {} as Record<CardId, CardGroup>;
   for (const id of makeDeck()) {
     const g = new THREE.Group() as CardGroup;
-    const front = new THREE.Mesh(new THREE.PlaneGeometry(CARD_W, CARD_H), new THREE.MeshLambertMaterial({ map: faceTexture(id) })) as THREE.Mesh<THREE.PlaneGeometry, THREE.MeshLambertMaterial>;
-    const rear = new THREE.Mesh(new THREE.PlaneGeometry(CARD_W, CARD_H), new THREE.MeshLambertMaterial({ map: back }));
+    const front = new THREE.Mesh(new THREE.PlaneGeometry(CARD_W, CARD_H), new THREE.MeshStandardMaterial({ roughness: 0.7, metalness: 0 }));
+    const rear = new THREE.Mesh(new THREE.PlaneGeometry(CARD_W, CARD_H), new THREE.MeshStandardMaterial({ roughness: 0.7, metalness: 0 }));
     rear.rotation.y = Math.PI; front.castShadow = true;
     g.add(front, rear);
-    g.userData = { id, tp: new THREE.Vector3(0.6, TABLE_TOP, -0.6), tq: new THREE.Quaternion(), b: 1, tb: 1, known: true, front, face: front.material.map!, back };
+    g.userData = { id, tp: new THREE.Vector3(0.6, TABLE_TOP, -0.6), tq: new THREE.Quaternion(), b: 1, tb: 1, known: true, front, face: null, back: null };
     g.position.copy(g.userData.tp);
     out[id] = g;
   }
   return out;
+}
+
+/** O baralho troca de desenho com o cenário: cada carta recebe a face e as costas dele, e o acabamento do papel. */
+export function dressCards(cards: Record<CardId, CardGroup>, art: DeckArt) {
+  for (const g of Object.values(cards)) {
+    const d = g.userData;
+    d.face = art.face(d.id); d.back = art.back;
+    const [front, rear] = g.children as THREE.Mesh<THREE.PlaneGeometry, THREE.MeshStandardMaterial>[];
+    front.material.map = d.known ? d.face : d.back; front.material.roughness = art.roughness; front.material.metalness = art.metalness; front.material.needsUpdate = true;
+    rear.material.map = d.back; rear.material.roughness = art.roughness; rear.material.metalness = art.metalness; rear.material.needsUpdate = true;
+  }
 }
 
 /** Mostra a face de uma carta só a quem a conhece; para os outros, costas dos dois lados. */
@@ -175,8 +144,6 @@ export function showFace(card: CardGroup, known: boolean) {
   const d = card.userData;
   if (d.known === known) return;
   d.known = known;
-  const m = d.front.material as THREE.MeshLambertMaterial;
+  const m = d.front.material as THREE.MeshStandardMaterial;
   m.map = known ? d.face : d.back; m.needsUpdate = true;
 }
-
-void RANKS;
