@@ -1,0 +1,28 @@
+<script lang="ts">
+  import { game, NAMES, TEAMS, ui } from '../state.svelte';
+  import { responder } from '../controller';
+  import { callName } from '../format';
+
+  const h = $derived(game.hand);
+  const meta = $derived(h ? `mão vale ${h.value} · rodada ${Math.min(h.played.length, 3)} · mão de ${NAMES[game.mao].toLowerCase()}` : '');
+  const turn = $derived.by(() => {
+    if (!h) return '';
+    if (game.over) return 'Fim de jogo.';
+    if (h.phase === 'over') return 'Mão encerrada.';
+    if (h.phase === 'respond') return `${NAMES[responder()]} responde ao ${callName(h.pending!.to)}`;
+    if (h.phase === 'dezDecision') return `${TEAMS[h.decider!]} decide se joga.`;
+    return h.turn === ui.view ? 'Sua vez.' : `Vez de ${NAMES[h.turn]}.`;
+  });
+</script>
+
+<div class="ss-card tm-score">
+  <div class="head"><span class="title">placar</span><span class="meta">{meta}</span></div>
+  <div class="body tm-metrics">
+    <div class="ss-metric"><span class="label">nós</span><span class="val">{game.scores[0]}</span></div>
+    <div class="ss-metric"><span class="label">eles</span><span class="val">{game.scores[1]}</span></div>
+  </div>
+  <div class="foot">
+    <span>{turn}</span>
+    {#if h && h.special !== 'normal'}<span class="ss-badge caution">{h.special === 'dez' ? 'mão de dez' : 'mão de ferro'}</span>{/if}
+  </div>
+</div>

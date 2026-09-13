@@ -1,0 +1,15 @@
+{
+  "name": "truco-mineiro",
+  "private": true,
+  "workspaces": ["packages/*", "apps/*"],
+  "scripts": {
+    "dev": "bun run --filter @truco/web dev",
+    "build": "bun run --filter @truco/web build",
+    "check": "bun run --filter @truco/web check",
+    "test": "bun test",
+    "preview": "bun run --filter @truco/web preview"
+  },
+  "devDependencies": {
+    "bun-types": "^1.4.2"
+  }
+}
