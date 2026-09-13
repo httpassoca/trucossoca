@@ -9,7 +9,7 @@ export interface LogLine { tag: string; text: string }
 /** Estado de interface (o que não é regra do jogo). */
 export const ui = $state({
   view: 0 as Seat,        // cadeira da câmera
-  sel: 0,                 // carta escolhida na mão da cadeira atual
+  sel: 0,                 // índice da carta escolhida entre as cartas da cadeira atual
   coverNext: false,       // próxima carta vai coberta
   prompt: null as Prompt,
   menuOpen: true,
