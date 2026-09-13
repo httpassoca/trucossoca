@@ -2,7 +2,7 @@
  * Mensagens trocadas entre cliente e servidor pelo WebSocket, nos dois sentidos, e o snapshot da sala
  * que cada pessoa recebe. Cliente e servidor importam daqui; nada é duplicado.
  */
-import type { GameEvent, GameView, Rules, Seat, Team } from '@truco/rules';
+import { RANKS, SUITS, type CardId, type DezAction, type GameEvent, type GameView, type RespondAction, type Rules, type Seat, type Team } from '@truco/rules';
 
 /** Apelido: tamanho máximo depois de aparado. */
 export const NICKNAME_MAX = 20;
@@ -29,13 +29,25 @@ export type ClientMessage =
   | { type: 'rules'; rules: Rules }
   | { type: 'ghostsSeeCards'; on: boolean }
   | { type: 'start' }
+  // jogadas: só de quem está sentado, durante a partida; o servidor aplica com os guardas do motor
+  | { type: 'play'; id: CardId; covered: boolean }
+  | { type: 'raise' }
+  | { type: 'respond'; action: RespondAction }
+  | { type: 'decideDez'; action: DezAction }
+  /** no fim de jogo, quem está sentado devolve a sala ao lobby com as mesmas cadeiras */
+  | { type: 'rematch' }
   | { type: 'ping' };
+
+/** Por que uma jogada foi recusada: fora da partida, sem cadeira, ou o motor não aceitou (fora da vez, fase errada…). */
+export type ActionError = 'notPlaying' | 'notSeated' | 'illegal';
 
 // servidor → cliente
 export type ServerMessage =
   | { type: 'snapshot'; snapshot: RoomSnapshot }
   /** o que aconteceu na mesa desde o snapshot anterior; o snapshot que os causou vem logo em seguida */
   | { type: 'events'; events: GameEvent[] }
+  /** jogada recusada; o cliente ignora com segurança (o snapshot que ele tem continua valendo) */
+  | { type: 'error'; action: ClientMessage['type']; reason: ActionError }
   | { type: 'pong' };
 
 export type RoomPhase = 'lobby' | 'playing';
@@ -77,6 +89,14 @@ export function parseClientMessage(raw: unknown): ClientMessage | null {
     case 'ping': return { type: 'ping' };
     case 'leaveSeat': return { type: 'leaveSeat' };
     case 'start': return { type: 'start' };
+    case 'raise': return { type: 'raise' };
+    case 'rematch': return { type: 'rematch' };
+    case 'play':
+      return isCardId(m.id) && typeof m.covered === 'boolean' ? { type: 'play', id: m.id, covered: m.covered } : null;
+    case 'respond':
+      return m.action === 'accept' || m.action === 'decline' || m.action === 'raise' ? { type: 'respond', action: m.action } : null;
+    case 'decideDez':
+      return m.action === 'play' || m.action === 'run' ? { type: 'decideDez', action: m.action } : null;
     case 'join':
     case 'nickname':
       if (typeof m.nickname !== 'string' || m.nickname.length > NICKNAME_MAX * 4) return null;
@@ -97,6 +117,7 @@ export function parseClientMessage(raw: unknown): ClientMessage | null {
 }
 
 const isTeam = (v: unknown): v is Team => v === 0 || v === 1;
+const isCardId = (v: unknown): v is CardId => typeof v === 'string' && v.length === 2 && (RANKS as string[]).includes(v[0]) && v[1] in SUITS;
 const isInt = (v: unknown, min: number, max: number): v is number => typeof v === 'number' && Number.isInteger(v) && v >= min && v <= max;
 
 /** Regras vindas do cliente: só os campos conhecidos, cada um no seu tipo; escada crescente e curta. */

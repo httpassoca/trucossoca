@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import { CLOSE_REPLACED, CLOSE_ROOM_NOT_FOUND, type RoomSnapshot, type ServerMessage } from '@truco/protocol';
+import { teamOf, type Seat } from '@truco/rules';
 import { createServer } from '../src/server';
 import { silentLog } from '../src/log';
 
@@ -9,7 +10,7 @@ let base: string;
 const wsUrl = (room: string, token: string) => `${base.replace('http', 'ws')}/ws?room=${room}&token=${token}`;
 
 beforeAll(() => {
-  app = createServer({ port: 0, distDir: '/nonexistent', log: silentLog });
+  app = createServer({ port: 0, distDir: '/nonexistent', log: silentLog, pace: { botDelay: 1, handPause: 1 } });
   base = `http://localhost:${app.server.port}`;
 });
 afterAll(() => app.stop());
@@ -106,6 +107,47 @@ describe('servidor', () => {
     expect(handB.cards[1].every((c) => c !== null)).toBe(true);
     expect(handB.cards[0]).toEqual([null, null, null]);
     expect(handA.stock).toBe(28);
+    a.close(); b.close();
+  });
+
+  test('duas abas e dois bots jogam uma partida inteira pelo socket e a revanche devolve a sala ao lobby', async () => {
+    const { code } = (await (await fetch(`${base}/api/rooms`, { method: 'POST' })).json()) as { code: string };
+    const a = new WebSocket(wsUrl(code, 'token-ffffffff'));
+    const b = new WebSocket(wsUrl(code, 'token-gggggggg'));
+    await Promise.all([nextMessage(a), nextMessage(b)]);
+    // cada aba joga pelo que o snapshot mostra: primeira carta, aceita truco, joga a mão de dez
+    const play = (ws: WebSocket, seat: Seat) => ws.addEventListener('message', (e) => {
+      const m = JSON.parse(String(e.data)) as ServerMessage; if (m.type !== 'snapshot') return;
+      const g = m.snapshot.game, h = g?.hand; if (!g || !h || g.over || h.phase === 'over') return;
+      const send = (msg: object) => ws.send(JSON.stringify(msg));
+      if (h.phase === 'dezDecision') { if (h.decider === teamOf(seat)) send({ type: 'decideDez', action: 'play' }); }
+      else if (h.phase === 'respond') { if (teamOf(h.pending!.by) !== teamOf(seat)) send({ type: 'respond', action: 'accept' }); }
+      else if (h.turn === seat) send({ type: 'play', id: h.cards[seat][0], covered: false });
+    });
+    const over = (ws: WebSocket) => new Promise<RoomSnapshot>((res) => ws.addEventListener('message', (e) => {
+      const m = JSON.parse(String(e.data)) as ServerMessage;
+      if (m.type === 'snapshot' && m.snapshot.game?.over) res(m.snapshot);
+    }));
+    const errors: ServerMessage[] = [];
+    for (const ws of [a, b]) ws.addEventListener('message', (e) => { const m = JSON.parse(String(e.data)) as ServerMessage; if (m.type === 'error') errors.push(m); });
+    play(a, 0); play(b, 1);
+    const finished = Promise.all([over(a), over(b)]);
+    const say = async (ws: WebSocket, msg: object) => { const p = Promise.all([nextMessage(a), nextMessage(b)]); ws.send(JSON.stringify(msg)); return p; };
+    await say(a, { type: 'join', nickname: 'Zé' });
+    await say(b, { type: 'join', nickname: 'Dita' });
+    await say(a, { type: 'takeSeat', team: 0 });
+    await say(b, { type: 'takeSeat', team: 1 });
+    a.send(JSON.stringify({ type: 'start' }));
+    const [endA, endB] = await finished;
+    expect(endA.game!.scores).toEqual(endB.game!.scores);
+    expect(endA.game!.scores[endA.game!.winner!]).toBeGreaterThanOrEqual(12);
+    expect(errors).toEqual([]);
+
+    const lobby = nextMessage(b);
+    a.send(JSON.stringify({ type: 'rematch' }));
+    const snap = (await lobby) as { snapshot: RoomSnapshot };
+    expect(snap.snapshot.phase).toBe('lobby');
+    expect(snap.snapshot.members.map((m) => [m.nickname, m.seat, m.bot])).toEqual([['Zé', 0, false], ['Dita', 1, false]]);
     a.close(); b.close();
   });
 });

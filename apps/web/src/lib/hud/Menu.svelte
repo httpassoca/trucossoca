@@ -80,7 +80,7 @@
       </div>
       <div class="foot">
         <button class="ss-btn ghost" type="button" onclick={() => navigate('/')}>Início</button>
-        {#if snap.canRestart}<button class="ss-btn ghost" type="button" onclick={() => { newGame(); resume(); }}>Nova partida</button>{/if}
+        {#if snap.restart}<button class="ss-btn ghost" type="button" onclick={() => { newGame(); resume(); }}>{snap.restart === 'newGame' ? 'Nova partida' : 'Revanche'}</button>{/if}
         <button class="ss-btn primary" type="button" onclick={resume}>{snap.seat === null ? 'Olhar' : 'Jogar'} <Kbd keys={['↵']} /></button>
       </div>
     </div>

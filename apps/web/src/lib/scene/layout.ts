@@ -1,4 +1,4 @@
-import { makeDeck, strength, teamOf, type CardId, type GameView, type HandView, type Play, type Seat } from '@truco/rules';
+import { makeDeck, strength, teamOf, type CardId, type GameView, type HandView, type PlayView, type Seat } from '@truco/rules';
 import * as THREE from 'three';
 import { seatAngle, seatDir, seatRight, TABLE_TOP, type CardGroup } from './builders';
 import { throwSpot, type Spot } from './throw';
@@ -6,12 +6,12 @@ import { throwSpot, type Spot } from './throw';
 const _q = new THREE.Quaternion(), _e = new THREE.Euler(), Y = new THREE.Vector3(0, 1, 0);
 const DECK = makeDeck();
 
-/** Posição de cada carta jogada é sorteada uma vez (quando aparece) e fica. */
+/** Posição de cada carta jogada é derivada da semente da jogada uma vez (quando aparece) e fica; a chave é a ordem na mão. */
 const spots = new Map<string, Spot>();
 let spotsHandKey = '';
 
-function spotFor(g: GameView, p: Play, trick: Play[]): Spot {
-  const key = `${g.handNo}:${p.id}`;
+function spotFor(g: GameView, p: PlayView, trick: PlayView[]): Spot {
+  const key = `${g.handNo}:${p.order}`;
   let s = spots.get(key);
   if (!s) {
     // referência: a melhor carta que já estava na mesa antes desta
@@ -19,20 +19,21 @@ function spotFor(g: GameView, p: Play, trick: Play[]): Spot {
     for (const q of trick) {
       if (q.order >= p.order) continue;
       const st = q.covered ? -1 : strength(q.id, g.rules);
-      if (st > best) { best = st; ref = spots.get(`${g.handNo}:${q.id}`) ?? null; }
+      if (st > best) { best = st; ref = spots.get(`${g.handNo}:${q.order}`) ?? null; }
     }
-    s = throwSpot(p.seat, p.kind, ref);
+    s = throwSpot(p.seat, p.kind, ref, p.seed);
     spots.set(key, s);
   }
   return s;
 }
 
 /**
- * Cartas que esta pessoa não vê (cartas alheias ocultas e o monte) são desenhadas com as 40 cartas físicas
- * que não aparecem em lugar nenhum do snapshot: costas são todas iguais. Cada vaga (cadeira+índice, ou posição
- * no monte) fica com a mesma carta física enquanto durar a mão. Quando uma carta oculta é jogada, o seu id
- * aparece na mesa: a carta física que o representava troca de lugar com a que ocupava a vaga que sumiu,
- * para a animação sair da mão de quem jogou.
+ * Cartas que esta pessoa não vê (cartas alheias ocultas, a coberta de outra cadeira e o monte) são desenhadas com
+ * as 40 cartas físicas que não aparecem em lugar nenhum do snapshot: costas são todas iguais. Cada vaga
+ * (cadeira+índice, jogada coberta pela ordem, ou posição no monte) fica com a mesma carta física enquanto durar
+ * a mão. Quando uma carta oculta é jogada, o seu id aparece na mesa: a carta física que o representava troca de
+ * lugar com a que ocupava a vaga que sumiu, para a animação sair da mão de quem jogou; uma coberta sem id
+ * herda a carta física de uma vaga que acabou de sumir, pelo mesmo motivo.
  */
 class HiddenSlots {
   private bySlot = new Map<string, CardId>();
@@ -44,9 +45,10 @@ class HiddenSlots {
     if (handKey !== this.handKey) { this.bySlot.clear(); this.handKey = handKey; }
     const visible = new Set<CardId>();
     for (const held of h.cards) for (const id of held) if (id) visible.add(id);
-    for (const trick of h.played) for (const p of trick) visible.add(p.id);
+    for (const trick of h.played) for (const p of trick) if (p.id) visible.add(p.id);
     const slots: string[] = [];
     h.cards.forEach((held, s) => held.forEach((id, i) => { if (!id) slots.push(`h${s}:${i}`); }));
+    for (const trick of h.played) for (const p of trick) if (!p.id) slots.push(`p${p.order}`);
     for (let i = 0; i < h.stock; i++) slots.push(`k${i}`);
     const wanted = new Set(slots);
 
@@ -61,7 +63,8 @@ class HiddenSlots {
       this.bySlot.set(slot, swap);
     }
     const taken = new Set(this.bySlot.values());
-    const pool = DECK.filter((id) => !visible.has(id) && !taken.has(id));
+    const spare = freed.filter((id) => !visible.has(id));
+    const pool = [...spare, ...DECK.filter((id) => !visible.has(id) && !taken.has(id) && !spare.includes(id))];
     for (const slot of slots) if (!this.bySlot.has(slot)) { const id = pool.shift(); if (!id) break; this.bySlot.set(slot, id); }
     return this.bySlot;
   }
@@ -105,7 +108,8 @@ export function layoutCards(g: GameView, ui: LayoutUi, cards: Record<CardId, Car
   }
   const last = h.played.length - 1;
   h.played.forEach((trick, t) => trick.forEach((p) => {
-    const card = cards[p.id]; const sp = spotFor(g, p, trick);
+    const id = p.id ?? slots.get(`p${p.order}`); if (!id) return;
+    const card = cards[id]; const sp = spotFor(g, p, trick);
     card.userData.tp.set(sp.x, TABLE_TOP + 0.002 + p.order * 0.0022, sp.z);
     card.userData.tq.setFromAxisAngle(Y, sp.yaw).multiply(_q.setFromEuler(_e.set(p.covered ? Math.PI / 2 : -Math.PI / 2, 0, 0, 'YXZ')));
     card.userData.tb = t === last ? 1 : 0.5;

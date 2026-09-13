@@ -31,7 +31,12 @@ export interface Play {
   kind: PlayKind;
   /** ordem global dentro da mão — quem joga depois fica por cima */
   order: number;
+  /** semente de onde a carta cai na mesa: todo mundo sorteia a mesma posição a partir dela */
+  seed: number;
 }
+
+/** Uma jogada como um observador a vê: a coberta de outra cadeira chega sem o id (ninguém sabe que carta é). */
+export type PlayView = Play | (Omit<Play, 'id' | 'covered' | 'kind'> & { id: null; covered: true; kind: 'cover' });
 
 export interface Pending {
   by: Seat;
@@ -50,7 +55,7 @@ export type CardSlot = CardId | null;
 
 /** O que a mão tem em comum entre o estado do motor e a visão parcial que chega do servidor. */
 export interface HandCore {
-  played: Play[][];
+  played: PlayView[][];
   results: (Team | null)[];
   order: number;
   value: number;
@@ -66,6 +71,7 @@ export interface HandCore {
 }
 
 export interface HandState extends HandCore {
+  played: Play[][];
   /** cartas que cada cadeira segura */
   cards: CardId[][];
   stock: CardId[];
@@ -82,7 +88,8 @@ export type DezAction = 'play' | 'run';
 
 export type GameEvent =
   | { type: 'newHand'; mao: Seat; special: Special; value: number; decider: Team | null }
-  | { type: 'play'; seat: Seat; id: CardId; covered: boolean; kind: PlayKind }
+  /** `id` null = coberta de outra cadeira (ver `eventsFor`); `seed` = de onde a carta cai, igual em toda tela */
+  | { type: 'play'; seat: Seat; id: CardId | null; covered: boolean; kind: PlayKind; seed: number }
   | { type: 'raise'; seat: Seat; to: number }
   | { type: 'respond'; seat: Seat; action: 'accept' | 'decline'; value: number; winnerTeam?: Team }
   | { type: 'dez'; team: Team; action: DezAction }

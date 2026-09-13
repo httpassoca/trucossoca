@@ -48,7 +48,7 @@ export class LocalTable implements Table {
   }
 
   play(id: CardId, covered = this.coverNext) {
-    if (!playCard(this.game, this.seat, id, covered)) return;
+    if (!playCard(this.game, this.seat, id, covered, this.rng)) return;
     this.coverNext = false;
     this.afterAction();
   }
@@ -93,7 +93,7 @@ export class LocalTable implements Table {
     return {
       game: viewFor(this.game, 'all'), seat: this.seat, acting: this.acting(), coverNext: this.coverNext,
       seats: LOCAL_NAMES.map((name, s) => ({ name, bot: this.settings.bots && s !== 0 })), teams: [...DEFAULT_TEAM_NAMES],
-      canRaise: canRaise(this.game, this.seat), canCover: coverAllowed(this.game), rulesEditable: true, canRestart: true,
+      canRaise: canRaise(this.game, this.seat), canCover: coverAllowed(this.game), rulesEditable: true, restart: 'newGame',
     };
   }
 
@@ -123,7 +123,7 @@ export class LocalTable implements Table {
     else if (h.phase === 'respond') respond(g, seat, chooseBotResponse(g, seat, this.rng));
     else if (h.phase === 'play' && h.turn === seat) {
       const c = chooseBotPlay(g, seat, this.rng);
-      if (c.kind === 'raise') raise(g, seat); else playCard(g, seat, c.id, c.covered);
+      if (c.kind === 'raise') raise(g, seat); else playCard(g, seat, c.id, c.covered, this.rng);
     } else return;
     this.afterAction();
   }

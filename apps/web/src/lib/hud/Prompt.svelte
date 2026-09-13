@@ -32,7 +32,7 @@
       {:else if p.kind === 'over'}
         <h3 class="tm-title">Fim de jogo: {snap.teams[game.winner!]}</h3>
         <p class="tm-text">{game.scores[0]} × {game.scores[1]}</p>
-        {#if snap.canRestart}<div class="tm-row"><button class="ss-btn primary" type="button" onclick={() => promptAct('new')}>Nova partida <Kbd keys={['↵']} /></button></div>{/if}
+        {#if snap.restart}<div class="tm-row"><button class="ss-btn primary" type="button" onclick={() => promptAct('new')}>{snap.restart === 'newGame' ? 'Nova partida' : 'Revanche: voltar para a sala'} <Kbd keys={['↵']} /></button></div>{/if}
       {/if}
     </div>
   </div>

@@ -41,7 +41,7 @@ const CLOSE_REASONS: Record<number, ClosedReason> = { [CLOSE_ROOM_NOT_FOUND]: 'r
  * A mesa online (ADR 0003): conecta na sala com o token do navegador, aplica os snapshots inteiros
  * que o servidor manda e reconecta sozinha com espera crescente. A sala (lobby, quem está, duplas) sai
  * por `state`/`watch`; a mesa (cadeira, cartas, de quem é a vez) sai por `snapshot`/`subscribe`, como na mesa local.
- * As ações de jogo chegam com a partida online; por enquanto a cadeira só olha.
+ * As jogadas viram mensagens; o servidor aplica ou recusa (a recusa é ignorada: o snapshot que temos continua valendo).
  */
 export class RemoteTable implements Table {
   private st: RemoteState = { status: 'idle', room: null, reason: null, attempt: 0 };
@@ -107,12 +107,13 @@ export class RemoteTable implements Table {
   setGhostsSeeCards(on: boolean) { this.send({ type: 'ghostsSeeCards', on }); }
   start() { this.send({ type: 'start' }); }
 
-  // mesa — as ações de jogo viram mensagens quando a partida online chegar
-  newGame() {}
-  play(_id: CardId, _covered = this.coverNext) {}
-  raise() {}
-  respond(_action: RespondAction) {}
-  decideDez(_action: DezAction) {}
+  // mesa — cada jogada é uma mensagem pela cadeira local; o servidor decide
+  /** no fim de jogo: revanche, que devolve a sala ao lobby */
+  newGame() { if (this.snap.restart === 'rematch') this.send({ type: 'rematch' }); }
+  play(id: CardId, covered = this.coverNext) { this.send({ type: 'play', id, covered }); }
+  raise() { this.send({ type: 'raise' }); }
+  respond(action: RespondAction) { this.send({ type: 'respond', action }); }
+  decideDez(action: DezAction) { this.send({ type: 'decideDez', action }); }
   toggleCover() {
     const next = !this.coverNext && coverAllowed(this.snap.game);
     if (next === this.coverNext) return;
@@ -134,11 +135,12 @@ export class RemoteTable implements Table {
     let msg: ServerMessage;
     try { msg = JSON.parse(raw); } catch { return; }
     if (msg.type === 'events') { this.pendingEvents.push(...msg.events); return; }
-    if (msg.type !== 'snapshot') return;
+    if (msg.type !== 'snapshot') return; // pong e erros: nada a fazer
     this.set({ room: msg.snapshot });
     if (msg.snapshot.you === null && this.joinedAs) this.send({ type: 'join', nickname: this.joinedAs }); // a sala nos esqueceu enquanto estávamos fora
     const events = this.pendingEvents; this.pendingEvents = [];
-    if (events.some((e) => e.type === 'newHand')) this.coverNext = false;
+    // a intenção de cobrir vale para uma jogada: cai quando a nossa carta chega, ou quando a mão vira
+    if (events.some((e) => e.type === 'newHand' || (e.type === 'play' && e.seat === this.snap.seat))) this.coverNext = false;
     this.publish(events);
   }
 
@@ -159,7 +161,7 @@ export class RemoteTable implements Table {
     });
     return {
       game, seat, seats, teams: room ? [...room.teams] : [...DEFAULT_TEAM_NAMES], acting: actingFor(game, seat), coverNext: this.coverNext,
-      canRaise: seat !== null && canRaise(game, seat), canCover: coverAllowed(game), rulesEditable: false, canRestart: false,
+      canRaise: seat !== null && canRaise(game, seat), canCover: coverAllowed(game), rulesEditable: false, restart: seat !== null && game.over ? 'rematch' : null,
     };
   }
 

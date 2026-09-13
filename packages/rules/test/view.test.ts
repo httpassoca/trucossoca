@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { createGame, startHand, viewFor } from '../src';
+import { createGame, defaultRules, eventsFor, playCard, startHand, takeEvents, viewFor, type CardId, type GameEvent, type PlayView } from '../src';
 
 const fixed = () => 0.5;
 
@@ -51,5 +51,70 @@ describe('viewFor: o que cada um vê da mão', () => {
 
   test('sem mão, a visão tem mão nula', () => {
     expect(viewFor(createGame(), 0).hand).toBeNull();
+  });
+});
+
+/** Mão em que a cadeira 0 já ganhou a 1ª vaza e a cadeira 0 abre a 2ª com carta coberta. */
+function withCoveredPlay() {
+  const g = createGame({ ...defaultRules, coverFromTrick: 2 });
+  const cards: CardId[][] = [['4c', '4d', '4h'], ['Kc', '4s', '5d'], ['Ks', '5h', '5s'], ['2c', '6c', '6d']];
+  const dealt: CardId[] = [];
+  for (let i = 0; i < 3; i++) for (let s = 0; s < 4; s++) dealt.push(cards[s][i]);
+  startHand(g, fixed, { deck: [...dealt].reverse() });
+  playCard(g, 0, '4c'); playCard(g, 1, 'Kc'); playCard(g, 2, 'Ks'); playCard(g, 3, '2c');
+  takeEvents(g);
+  playCard(g, 0, '4d', true, () => 0.25);
+  playCard(g, 1, '4s');
+  return g;
+}
+
+describe('viewFor: a carta coberta', () => {
+  test('quem jogou a coberta vê o id dela; as outras cadeiras e quem não vê nada recebem a jogada sem id', () => {
+    const g = withCoveredPlay();
+    const real = g.hand!.played[1][0];
+    expect(real.covered).toBe(true);
+    expect(viewFor(g, 0).hand!.played[1][0]).toEqual(real);
+    expect(viewFor(g, 'all').hand!.played[1][0]).toEqual(real);
+    for (const from of [1, 2, 3, 'none'] as const) {
+      const seen = viewFor(g, from).hand!.played[1][0];
+      expect(seen).toEqual({ ...real, id: null } as PlayView);
+      expect(JSON.stringify(viewFor(g, from))).not.toContain('"4d"');
+    }
+    // a carta aberta da mesma vaza continua inteira
+    expect(viewFor(g, 3).hand!.played[1][1]).toEqual(g.hand!.played[1][1]);
+  });
+
+  test('eventsFor esconde o id da coberta de quem não a jogou e deixa o resto igual', () => {
+    const g = withCoveredPlay();
+    const events = takeEvents(g); // a coberta da cadeira 0 e a carta aberta da cadeira 1
+    expect(events.map((e) => e.type)).toEqual(['play', 'play']);
+    const cover = events[0] as GameEvent & { type: 'play' };
+    expect(cover.covered).toBe(true);
+    expect(eventsFor(events, 0)).toEqual(events);
+    expect(eventsFor(events, 'all')).toEqual(events);
+    for (const from of [1, 2, 3, 'none'] as const) {
+      const seen = eventsFor(events, from);
+      expect(seen[0]).toEqual({ ...cover, id: null });
+      expect(seen[1]).toEqual(events[1]);
+    }
+    expect(events[0]).toBe(cover); // não mexe na lista recebida
+  });
+});
+
+describe('playCard: a semente de onde a carta cai', () => {
+  test('cada jogada guarda uma semente inteira tirada do rng, no estado e no evento', () => {
+    const g = dealt();
+    takeEvents(g);
+    const id = g.hand!.cards[0][0];
+    expect(playCard(g, 0, id, false, () => 0.25)).toBe(true);
+    const play = g.hand!.played[0][0];
+    expect(Number.isInteger(play.seed)).toBe(true);
+    expect(play.seed).toBeGreaterThanOrEqual(0);
+    const [ev] = takeEvents(g);
+    expect(ev).toEqual({ type: 'play', seat: 0, id, covered: false, kind: 'lead', seed: play.seed });
+    // rng diferente, semente diferente
+    const g2 = dealt();
+    playCard(g2, 0, g2.hand!.cards[0][0], false, () => 0.75);
+    expect(g2.hand!.played[0][0].seed).not.toBe(play.seed);
   });
 });

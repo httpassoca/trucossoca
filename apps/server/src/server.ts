@@ -1,10 +1,11 @@
 import { CLOSE_ROOM_NOT_FOUND, SOCKET_IDLE_TIMEOUT } from '@truco/protocol';
 import type { SocketData } from './host';
+import type { RoomPace } from './room';
 import { Rooms } from './rooms';
 import type { Log } from './log';
 import { staticHandler } from './static';
 
-export interface ServerOptions { port: number; distDir: string; log: Log; hostname?: string }
+export interface ServerOptions { port: number; distDir: string; log: Log; hostname?: string; pace?: RoomPace }
 
 const TOKEN_RE = /^[A-Za-z0-9_-]{8,64}$/;
 
@@ -13,7 +14,7 @@ const TOKEN_RE = /^[A-Za-z0-9_-]{8,64}$/;
  * Sala inexistente: o upgrade é aceito e fechado com um código que o cliente sabe explicar.
  */
 export function createServer(opts: ServerOptions) {
-  const rooms = new Rooms(opts.log);
+  const rooms = new Rooms(opts.log, Math.random, opts.pace);
   const serveStatic = staticHandler(opts.distDir);
 
   const server = Bun.serve<SocketData>({

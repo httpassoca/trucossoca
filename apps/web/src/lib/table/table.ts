@@ -26,8 +26,8 @@ export interface TableSnapshot {
   canCover: boolean;
   /** as regras (e a configuração da mesa) podem ser mexidas daqui; online a sala tranca até o fim da partida */
   rulesEditable: boolean;
-  /** `newGame` faz sentido nesta mesa (offline); online a partida nova nasce no lobby */
-  canRestart: boolean;
+  /** o que `newGame` faz aqui: recomeça na hora (offline), pede revanche e volta ao lobby (online, no fim de jogo), ou nada */
+  restart: 'newGame' | 'rematch' | null;
 }
 
 /** Chamado depois de cada mudança com o snapshot novo e os eventos que a causaram (vazio se só a intenção mudou). */
@@ -63,6 +63,6 @@ export function actingFor(g: GameReadable, seat: Seat | null): Seat | -1 {
 export function emptySnapshot(): TableSnapshot {
   return {
     game: viewFor(createGame(), 'all'), seat: null, seats: [0, 1, 2, 3].map(() => ({ name: '', bot: false })), teams: [...DEFAULT_TEAM_NAMES],
-    acting: -1, coverNext: false, canRaise: false, canCover: false, rulesEditable: false, canRestart: false,
+    acting: -1, coverNext: false, canRaise: false, canCover: false, rulesEditable: false, restart: null,
   };
 }

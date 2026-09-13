@@ -1,7 +1,7 @@
 import { CLOSE_REPLACED, CLOSE_ROOM_ENDED, parseClientMessage } from '@truco/protocol';
 import type { ServerWebSocket } from 'bun';
 import type { Log } from './log';
-import { createRoom, step, timerKey, type RoomInput, type RoomState } from './room';
+import { createRoom, DEFAULT_PACE, step, timerKey, type RoomInput, type RoomPace, type RoomState } from './room';
 
 export interface SocketData { code: string; token: string }
 export type Socket = ServerWebSocket<SocketData>;
@@ -15,8 +15,8 @@ export class RoomHost {
   private readonly sockets = new Map<string, Socket>();
   private readonly handles = new Map<string, ReturnType<typeof setTimeout>>();
 
-  constructor(code: string, private readonly log: Log, private readonly onDead: (code: string) => void, now = Date.now()) {
-    this.state = createRoom(code, now);
+  constructor(code: string, private readonly log: Log, private readonly onDead: (code: string) => void, now = Date.now(), pace: RoomPace = DEFAULT_PACE) {
+    this.state = createRoom(code, now, pace);
     this.syncTimers(now);
     log('room.created', { room: code });
   }

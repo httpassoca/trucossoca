@@ -21,4 +21,14 @@ export class ManualClock implements Clock {
       this.step();
     }
   }
+  /** roda tudo o que já venceu (as cadeias de timers de zero), sem avançar o relógio */
+  settle() { while (this.tasks.some((t) => t.at <= this.now)) this.step(); }
+  /** roda timer por timer até a condição valer (há timers que se repetem, como o ping: `run` não serve) */
+  runUntil(done: () => boolean, limit = 20_000) {
+    while (!done()) {
+      if (!this.tasks.length) throw new Error('nada mais vai acontecer');
+      if (limit-- <= 0) throw new Error('a condição nunca valeu');
+      this.step();
+    }
+  }
 }

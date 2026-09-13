@@ -53,3 +53,25 @@ describe('parseClientMessage', () => {
     expect(parseClientMessage(JSON.stringify({ type: 'rules' }))).toBeNull();
   });
 });
+
+describe('parseClientMessage: as jogadas', () => {
+  test('aceita jogar (com coberta), trucar, responder, decidir a mão de dez e revanche', () => {
+    expect(parseClientMessage(JSON.stringify({ type: 'play', id: '4c', covered: false }))).toEqual({ type: 'play', id: '4c', covered: false });
+    expect(parseClientMessage(JSON.stringify({ type: 'play', id: 'As', covered: true }))).toEqual({ type: 'play', id: 'As', covered: true });
+    expect(parseClientMessage(JSON.stringify({ type: 'raise' }))).toEqual({ type: 'raise' });
+    for (const action of ['accept', 'decline', 'raise'] as const) expect(parseClientMessage(JSON.stringify({ type: 'respond', action }))).toEqual({ type: 'respond', action });
+    for (const action of ['play', 'run'] as const) expect(parseClientMessage(JSON.stringify({ type: 'decideDez', action }))).toEqual({ type: 'decideDez', action });
+    expect(parseClientMessage(JSON.stringify({ type: 'rematch' }))).toEqual({ type: 'rematch' });
+  });
+
+  test('carta que não existe, coberta sem booleano ou resposta desconhecida são rejeitadas', () => {
+    expect(parseClientMessage(JSON.stringify({ type: 'play', id: '8c', covered: false }))).toBeNull();
+    expect(parseClientMessage(JSON.stringify({ type: 'play', id: '4x', covered: false }))).toBeNull();
+    expect(parseClientMessage(JSON.stringify({ type: 'play', id: 4, covered: false }))).toBeNull();
+    expect(parseClientMessage(JSON.stringify({ type: 'play', id: '4c' }))).toBeNull();
+    expect(parseClientMessage(JSON.stringify({ type: 'play', id: '4c', covered: 'sim' }))).toBeNull();
+    expect(parseClientMessage(JSON.stringify({ type: 'respond', action: 'fold' }))).toBeNull();
+    expect(parseClientMessage(JSON.stringify({ type: 'respond' }))).toBeNull();
+    expect(parseClientMessage(JSON.stringify({ type: 'decideDez', action: 'accept' }))).toBeNull();
+  });
+});

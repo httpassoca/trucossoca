@@ -1,6 +1,6 @@
 import { makeDeck, shuffle, strength } from './cards';
 import type {
-  CardId, DezAction, GameReadable, GameState, GameView, HandState, Play, PlayKind, RespondAction, Rng, Rules, Seat, Team,
+  CardId, DezAction, GameEvent, GameReadable, GameState, GameView, HandState, Play, PlayKind, PlayView, RespondAction, Rng, Rules, Seat, Team,
 } from './types';
 
 export const defaultRules: Rules = {
@@ -121,9 +121,9 @@ export function coverAllowed(g: GameReadable): boolean {
   return g.rules.allowCovered && h.special !== 'ferro' && h.played.length >= g.rules.coverFromTrick;
 }
 
-export function currentBest(g: GameReadable): { best: number; play: Play | null } {
+export function currentBest(g: GameReadable): { best: number; play: PlayView | null } {
   const h = g.hand!, plays = h.played[h.played.length - 1];
-  let best = -1, play: Play | null = null;
+  let best = -1, play: PlayView | null = null;
   for (const p of plays) {
     const st = p.covered ? -1 : strength(p.id, g.rules);
     if (st > best) { best = st; play = p; }
@@ -131,7 +131,8 @@ export function currentBest(g: GameReadable): { best: number; play: Play | null 
   return { best, play };
 }
 
-export function playCard(g: GameState, seat: Seat, id: CardId, covered = false): boolean {
+/** A semente da posição da carta: um inteiro tirado de `rng` (o servidor sorteia, todo mundo repete). */
+export function playCard(g: GameState, seat: Seat, id: CardId, covered = false, rng: Rng = Math.random): boolean {
   const h = g.hand; if (!h || h.phase !== 'play' || h.turn !== seat) return false;
   const cards = h.cards[seat]; const i = cards.indexOf(id); if (i < 0) return false;
   if (covered && !coverAllowed(g)) covered = false;
@@ -140,8 +141,9 @@ export function playCard(g: GameState, seat: Seat, id: CardId, covered = false):
   const st = covered ? -1 : strength(id, g.rules);
   const kind: PlayKind = covered ? 'cover' : plays.length === 0 ? 'lead' : st > best ? 'kill' : st === best ? 'tie' : 'lose';
   cards.splice(i, 1);
-  plays.push({ seat, id, covered, kind, order: h.order++ });
-  g.events.push({ type: 'play', seat, id, covered, kind });
+  const seed = Math.floor(rng() * 0x7fffffff);
+  plays.push({ seat, id, covered, kind, order: h.order++, seed });
+  g.events.push({ type: 'play', seat, id, covered, kind, seed });
   h.turn = nextSeat(seat);
   if (plays.length === 4) resolveTrick(g);
   return true;
@@ -209,17 +211,33 @@ export type Perspective = Seat | 'all' | 'none';
 
 /**
  * A partida vista de `from`: cópia sem a fila de eventos, cartas alheias ocultas e o monte só como contagem.
- * As cartas já jogadas ficam inteiras, cobertas inclusive: quando as jogadas forem online, a coberta precisa esconder o id.
+ * As cartas abertas na mesa ficam inteiras; a coberta só mostra o id a quem a jogou (ou a quem vê tudo).
  */
 export function viewFor(g: GameState, from: Perspective): GameView {
   const { events: _events, hand, ...core } = structuredClone(g);
   if (!hand) return { ...core, hand: null };
-  const { cards, stock, ...rest } = hand;
+  const { cards, stock, played, ...rest } = hand;
   const sees = (s: Seat) => {
     if (from === 'all') return true;
     if (from === 'none') return false;
     if (s === from) return true;
     return hand.revealPartner && s === partnerOf(from) && teamOf(from) === hand.decider;
   };
-  return { ...core, hand: { ...rest, cards: cards.map((held, s) => (sees(s as Seat) ? held : held.map(() => null))), stock: stock.length } };
+  return {
+    ...core,
+    hand: {
+      ...rest,
+      cards: cards.map((held, s) => (sees(s as Seat) ? held : held.map(() => null))),
+      played: played.map((trick) => trick.map((p) => hidePlay(p, from))),
+      stock: stock.length,
+    },
+  };
+}
+
+const hidePlay = <P extends { seat: Seat; id: CardId | null; covered: boolean }>(p: P, from: Perspective): P =>
+  p.covered && from !== 'all' && p.seat !== from ? { ...p, id: null } : p;
+
+/** Os eventos como `from` os recebe: a coberta de outra cadeira vai sem o id. O resto passa igual. */
+export function eventsFor(events: GameEvent[], from: Perspective): GameEvent[] {
+  return events.map((e) => (e.type === 'play' ? hidePlay(e, from) : e));
 }

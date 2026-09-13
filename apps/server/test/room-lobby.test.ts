@@ -14,7 +14,7 @@ class Sim {
   constructor(public now = T0) { this.state = createRoom('ABCD', now); }
   feed(input: RoomInput, at = this.now) {
     this.now = at;
-    const r = step(this.state, input, at, fixedRng);
+    const r = step(this.state, input, at, { rng: fixedRng });
     this.state = r.state; this.out.push(...r.out); this.events.push(...r.events);
     return r;
   }

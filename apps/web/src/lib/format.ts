@@ -17,7 +17,7 @@ export function formatEvent(e: GameEvent, snap: TableSnapshot): LogLine | null {
       return line(`Nova mão. ${names[e.mao]} é o mão.`);
     case 'play': {
       const verb = e.kind === 'kill' ? 'matou com' : e.kind === 'tie' ? 'embuchou com' : 'jogou';
-      return line(`${names[e.seat]} ${verb} ${e.covered ? 'carta coberta' : cardLabel(e.id)}`);
+      return line(`${names[e.seat]} ${verb} ${e.covered || e.id === null ? 'carta coberta' : cardLabel(e.id)}`);
     }
     case 'raise': return line(`${names[e.seat]} pediu ${callName(e.to)} (${e.to})`);
     case 'respond':

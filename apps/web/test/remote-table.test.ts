@@ -233,3 +233,67 @@ describe('RemoteTable: reconexão', () => {
     expect(table.state.status).toBe('closed');
   });
 });
+
+describe('RemoteTable: as jogadas', () => {
+  test('jogar, trucar, responder e decidir a mão de dez viram mensagens do protocolo pela cadeira local', () => {
+    const { table, last } = setup();
+    table.connect(); last().open();
+    const { snapshot } = playing(1);
+    last().receive({ type: 'snapshot', snapshot });
+    table.play('4c'); table.play('7h', true); table.raise(); table.respond('decline'); table.decideDez('run');
+    expect(last().sent).toEqual([
+      { type: 'play', id: '4c', covered: false }, { type: 'play', id: '7h', covered: true }, { type: 'raise' },
+      { type: 'respond', action: 'decline' }, { type: 'decideDez', action: 'run' },
+    ]);
+  });
+
+  test('cobrir a próxima carta vai junto na jogada e desliga quando a própria jogada chega', () => {
+    const { table, last } = setup();
+    table.connect(); last().open();
+    const { snapshot } = playing(1);
+    const later = structuredClone(snapshot);
+    later.game!.hand!.played.push([]);
+    last().receive({ type: 'snapshot', snapshot: later });
+    table.toggleCover();
+    table.play('4c');
+    expect(last().sent).toEqual([{ type: 'play', id: '4c', covered: true }]);
+    expect(table.snapshot.coverNext).toBe(true); // até o servidor confirmar
+    last().receive({ type: 'events', events: [{ type: 'play', seat: 1, id: '4c', covered: true, kind: 'cover', seed: 7 }] });
+    last().receive({ type: 'snapshot', snapshot: later });
+    expect(table.snapshot.coverNext).toBe(false);
+  });
+
+  test('uma jogada recusada pelo servidor não muda nada aqui', () => {
+    const { table, last } = setup();
+    table.connect(); last().open();
+    const { snapshot } = playing(1);
+    last().receive({ type: 'snapshot', snapshot });
+    const got: unknown[] = [];
+    table.subscribe((s, ev) => got.push([s, ev]));
+    const before = table.snapshot;
+    last().receive({ type: 'error', action: 'play', reason: 'illegal' });
+    expect(table.snapshot).toBe(before);
+    expect(got).toEqual([]);
+    expect(table.state.status).toBe('open');
+  });
+
+  test('no fim de jogo, quem está sentado pode pedir revanche; fantasma não; antes do fim ninguém', () => {
+    const { table, last } = setup();
+    table.connect(); last().open();
+    const { snapshot } = playing(1);
+    last().receive({ type: 'snapshot', snapshot });
+    expect(table.snapshot.restart).toBeNull();
+    table.newGame();
+    expect(last().sent).toEqual([]);
+    const over = structuredClone(snapshot);
+    over.game!.over = true; over.game!.winner = 0;
+    last().receive({ type: 'snapshot', snapshot: over });
+    expect(table.snapshot.restart).toBe('rematch');
+    table.newGame();
+    expect(last().sent).toEqual([{ type: 'rematch' }]);
+    const ghost = playing('all').snapshot;
+    ghost.game!.over = true; ghost.game!.winner = 0;
+    last().receive({ type: 'snapshot', snapshot: ghost });
+    expect(table.snapshot.restart).toBeNull();
+  });
+});

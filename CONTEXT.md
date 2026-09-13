@@ -86,6 +86,10 @@ _Evitar_: espectador, observador, viewer
 Ocupante de cadeira controlado pelo servidor. Preenche cadeiras vazias e assume a cadeira de quem se desconecta.
 _Evitar_: IA, CPU, NPC
 
+**Revanche** (`rematch`):
+No fim de jogo, qualquer pessoa sentada pede revanche e a sala inteira volta ao lobby com as mesmas cadeiras, os mesmos nomes de dupla e as mesmas regras; os bots saem e voltam ao começar.
+_Evitar_: nova partida (é o botão da mesa offline), restart, replay
+
 **Variante** (`variant`):
 Um conjunto nomeado de regras. Hoje só existe Truco Mineiro, com as regras individuais ajustáveis na sala.
 _Evitar_: modo, preset
