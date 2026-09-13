@@ -1,12 +1,15 @@
 import type { CardId, GameView, Seat } from '@truco/rules';
 import * as THREE from 'three';
-import { HEAD_Y, seatDir, TABLE_TOP, type CardGroup, type Character } from './builders';
+import type { Presence } from '../table/table';
+import { HEAD_Y, seatAngle, seatDir, TABLE_TOP, type CardGroup, type Character } from './builders';
+import { angleDelta } from './camera';
 
 const _v = new THREE.Vector3();
 export const headWorld = (c: Character) => c.g.localToWorld(new THREE.Vector3(0, HEAD_Y, 0));
 
+/** `view`: a cadeira de onde a câmera olha; -1 quando ela anda solta (fantasma). */
 export interface GazeCtx {
-  game: GameView; view: Seat; camera: THREE.Camera; chars: Character[];
+  game: GameView; view: Seat | -1; camera: THREE.Camera; chars: Character[];
   cards: Record<CardId, CardGroup>; lastPlay: { id: CardId | null; t: number }; acting: Seat | -1;
 }
 
@@ -29,4 +32,12 @@ export function aimHead(c: Character, now: number, t: number, x: GazeCtx) {
   const pitch = THREE.MathUtils.clamp(Math.atan2(p.y, Math.hypot(p.x, p.z)), -0.7, 0.5);
   c.head.rotation.y += (yaw - c.head.rotation.y) * 0.08;
   c.head.rotation.x += (pitch - c.head.rotation.x) * 0.08;
+}
+
+/** Cabeça de quem senta seguindo o olhar que a pessoa mandou: o yaw chega absoluto, a cabeça é relativa à cadeira. */
+export function aimHeadPresence(c: Character, p: Presence) {
+  const yaw = THREE.MathUtils.clamp(angleDelta(p.yaw, seatAngle(c.seat)), -1.2, 1.2);
+  const pitch = THREE.MathUtils.clamp(p.pitch, -0.7, 0.5);
+  c.head.rotation.y += (yaw - c.head.rotation.y) * 0.15;
+  c.head.rotation.x += (pitch - c.head.rotation.x) * 0.15;
 }

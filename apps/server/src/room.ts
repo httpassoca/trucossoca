@@ -187,6 +187,7 @@ export function step(state: RoomState, input: RoomInput, now: number, opts: Step
         if (m || s.visitors.includes(input.token)) out.push({ to: input.token, message: { type: 'pong' } });
         break;
       }
+      if (msg.type === 'presence') break; // passa por fora da sala: o host repassa aos outros, e não é atividade
       if (msg.type === 'join' && !m) {
         if (!s.visitors.includes(input.token)) break;
         s.visitors = s.visitors.filter((t) => t !== input.token);
@@ -213,6 +214,20 @@ export function step(state: RoomState, input: RoomInput, now: number, opts: Step
         // vale também durante a partida: é sobre quem assiste, não sobre quem joga
         touch(m);
         if (s.ghostsSeeCards !== msg.on) { s.ghostsSeeCards = msg.on; broadcast(); }
+        break;
+      }
+      if (msg.type === 'takeBotSeat') {
+        // fantasma senta no lugar de um bot de verdade, só na pausa entre mãos; a cadeira de uma pessoa ausente continua dela
+        const refuse = (reason: ActionError) => out.push({ to: input.token, message: { type: 'error', action: msg.type, reason } });
+        if (s.phase !== 'playing' || !s.game) { refuse('notPlaying'); break; }
+        const bot = s.members.find((o) => o.seat === msg.seat && o.bot);
+        if (m.seat !== null || !bot || s.game.over) { refuse('illegal'); break; }
+        if (s.game.hand?.phase !== 'over') { refuse('midHand'); break; }
+        s.members = s.members.filter((o) => o !== bot);
+        m.seat = msg.seat;
+        touch(m);
+        events.push({ type: 'seated', id: m.id, nickname: m.nickname, seat: msg.seat });
+        broadcast();
         break;
       }
       if (GAME_ACTIONS.has(msg.type)) {

@@ -563,3 +563,68 @@ describe('partida online: ausência', () => {
     expect(s.snapshotFor('t3')!.members.map((m) => [m.nickname, m.seat])).toEqual([['Zé', 0], ['Nena', 2]]);
   });
 });
+
+describe('partida online: fantasmas', () => {
+  const memberNamed = (s: Sim, token: string, name: string) => s.snapshotFor(token)!.members.find((m) => m.nickname === name)!;
+  const betweenHands = (x: Sim) => x.game.hand?.phase === 'over';
+
+  test('fantasma toma a cadeira de um bot entre mãos e passa a jogar por ela, na dupla daquela cadeira', () => {
+    const s = scripted(); // Nena (t3) assiste; Tião (m4) é o bot da cadeira 1
+    run(s, betweenHands);
+    s.out = [];
+    s.say('t3', { type: 'takeBotSeat', seat: 1 });
+    expect(s.errorsFor('t3')).toEqual([]);
+    const snap = s.snapshotFor('t1')!;
+    expect(snap.members.map((m) => [m.nickname, m.seat, m.bot])).toEqual([['Zé', 0, false], ['Dita', 2, false], ['Nena', 1, false], ['Bastião', 3, true]]);
+    expect(s.events).toContainEqual({ type: 'seated', id: 'm3', nickname: 'Nena', seat: 1 });
+    // a mão seguinte vem como sempre, e Nena só vê as próprias cartas
+    s.fire(s.gameTimer()!);
+    const hand = s.snapshotFor('t3')!.game!.hand!;
+    expect(hand.cards[1].every((c) => c !== null)).toBe(true);
+    expect(hand.cards[0]).toEqual([null, null, null]);
+    // e joga pela cadeira 1 quando chega a vez dela (mão 2: Zé abre; depois é a cadeira 1)
+    s.say('t1', { type: 'play', id: strongest(s.snapshotFor('t1')!.game!.hand!.cards[0]), covered: false });
+    s.out = [];
+    s.say('t3', { type: 'play', id: hand.cards[1][0]!, covered: false });
+    expect(s.errorsFor('t3')).toEqual([]);
+    expect(s.eventsFor('t1')).toContainEqual(expect.objectContaining({ type: 'play', seat: 1 }));
+  });
+
+  test('no meio da mão a cadeira do bot não se toma: a recusa diz que a mão está em curso', () => {
+    const s = scripted();
+    const before = structuredClone(s.state);
+    s.out = [];
+    s.say('t3', { type: 'takeBotSeat', seat: 1 });
+    expect(s.out).toEqual([{ to: 't3', message: { type: 'error', action: 'takeBotSeat', reason: 'midHand' } }]);
+    expect(s.state).toEqual(before);
+  });
+
+  test('só fantasma, só na partida, só cadeira de bot de verdade (não a de quem um bot joga por), e nunca no fim de jogo', () => {
+    const s = nosContraBots();
+    for (const [n, { cards }] of Object.entries(SCRIPT)) s.decks[Number(n)] = cards;
+    s.out = [];
+    s.say('t3', { type: 'takeBotSeat', seat: 1 });
+    expect(s.out).toEqual([{ to: 't3', message: { type: 'error', action: 'takeBotSeat', reason: 'notPlaying' } }]);
+    s.start('t1');
+    s.feed({ kind: 'message', token: 't1', message: { type: 'handToBot', member: 'm2' } }, T0 + IDLE_HANDOFF); // um bot joga por Dita (cadeira 2)
+    run(s, betweenHands, [['t1', 0]]);
+    s.out = [];
+    s.say('t1', { type: 'takeBotSeat', seat: 1 }); // quem senta
+    s.say('t3', { type: 'takeBotSeat', seat: 2 }); // a cadeira continua sendo de Dita
+    s.say('t3', { type: 'takeBotSeat', seat: 0 }); // a de Zé
+    s.connect('t4'); s.say('t4', { type: 'takeBotSeat', seat: 1 }); // visitante sem apelido
+    expect(s.out.filter((o) => o.message.type === 'error').map((o) => [o.to, (o.message as { reason: string }).reason])).toEqual([['t1', 'illegal'], ['t3', 'illegal'], ['t3', 'illegal']]);
+    expect(s.state.members.find((m) => m.nickname === 'Nena')!.seat).toBeNull();
+    run(s, undefined, [['t1', 0]]);
+    s.out = [];
+    s.say('t3', { type: 'takeBotSeat', seat: 1 });
+    expect(s.out).toEqual([{ to: 't3', message: { type: 'error', action: 'takeBotSeat', reason: 'illegal' } }]);
+  });
+
+  test('presença não passa pela sala: não muda nada nem adia a morte', () => {
+    const s = scripted();
+    const before = structuredClone(s.state);
+    s.feed({ kind: 'message', token: 't3', message: { type: 'presence', presence: { x: 1, z: 2, yaw: 0, pitch: 0 } } }, T0 + 5_000);
+    expect(s.state).toEqual(before);
+  });
+});

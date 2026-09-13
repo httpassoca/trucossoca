@@ -12,7 +12,7 @@
 
   let { code }: { code: string } = $props();
 
-  let remote = $state.raw<RemoteState>({ status: 'idle', room: null, reason: null, attempt: 0 });
+  let remote = $state.raw<RemoteState>({ status: 'idle', room: null, reason: null, attempt: 0, wantsSeat: null });
   /** quando o snapshot atual chegou e a hora de agora: `idle` de cada pessoa é medido no snapshot e envelhece daqui */
   let snapAt = $state(Date.now());
   let now = $state(Date.now());
@@ -63,6 +63,8 @@
   /** outra pessoa sentada, que ainda joga por si: quem senta pode passar a cadeira dela a um bot depois de um minuto parada */
   const canHandOff = (m: RoomMemberView) => live && !!me && me.seat !== null && m.id !== me.id && !m.bot && m.connected && !m.botControlled;
   const handOffWait = (m: RoomMemberView) => Math.max(0, Math.ceil((IDLE_HANDOFF - idleFor(m)) / 1000));
+  /** fantasma pode sentar no lugar de um bot: vai entre uma mão e outra (a intenção espera a mão acabar) */
+  const canTakeBot = (m: RoomMemberView) => live && !!me && me.seat === null && m.bot && m.seat !== null;
 
   function submit(e: SubmitEvent) {
     e.preventDefault();
@@ -85,7 +87,7 @@
   {#if !m.connected}<span class="ss-badge neutral">caiu</span>{/if}
   {#if m.botControlled}<span class="ss-badge caution" title="um bot joga por esta pessoa até ela voltar ou agir">bot jogando</span>{/if}
 {/snippet}
-<!-- `handoff`: com o botão de passar a cadeira a um bot (só na mesa, para quem senta) -->
+<!-- `handoff`: com os botões da mesa: passar a cadeira a um bot (quem senta) e sentar no lugar de um bot (fantasma) -->
 {#snippet member(m: RoomMemberView, handoff = false)}
   <li class:off={!m.connected}>
     <span>{m.nickname}</span>
@@ -95,6 +97,12 @@
       <button class="ss-btn" type="button" disabled={wait > 0} title={wait > 0 ? `só depois de um minuto sem agir: faltam ${wait}s` : 'um bot joga por esta pessoa até ela agir de novo'} onclick={() => table.handToBot(m.id)}>
         {wait > 0 ? `Passar para um bot (${wait}s)` : 'Passar para um bot'}
       </button>
+    {:else if handoff && canTakeBot(m)}
+      {#if remote.wantsSeat === m.seat}
+        <button class="ss-btn" type="button" title="você senta aqui assim que a mão acabar" onclick={() => table.takeBotSeat(null)}>Sento quando a mão acabar · desistir</button>
+      {:else}
+        <button class="ss-btn" type="button" title="entra na partida no lugar deste bot, entre uma mão e outra" onclick={() => table.takeBotSeat(m.seat!)}>Sentar aqui</button>
+      {/if}
     {/if}
   </li>
 {/snippet}

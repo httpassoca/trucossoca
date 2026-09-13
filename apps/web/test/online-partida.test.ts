@@ -10,7 +10,8 @@ import { seeded } from './seeded';
 /**
  * A sala de verdade (`step`) atrás de sockets falsos: cada mensagem atravessa o cano num timer de zero,
  * como pela rede, e os timers que a sala pede vencem no mesmo relógio manual. Sem servidor, sem porta.
- * Como o host, derruba quem fica `SOCKET_IDLE_TIMEOUT` sem mandar nada, contando a tolerância desde o último sinal.
+ * Como o host, derruba quem fica `SOCKET_IDLE_TIMEOUT` sem mandar nada, contando a tolerância desde o último sinal,
+ * e repassa a presença de cada membro aos outros sockets por fora da sala.
  */
 class Pipe {
   state: RoomState;
@@ -34,6 +35,11 @@ class Pipe {
   fromClient(ws: PipeSocket, token: string, raw: string) {
     const message = parseClientMessage(raw); if (!message) throw new Error(`mensagem fora do protocolo: ${raw}`);
     this.heard(ws);
+    if (message.type === 'presence') {
+      const member = this.state.members.find((m) => m.token === token); if (!member) return;
+      for (const [t, other] of this.sockets) if (t !== token) this.clock.setTimeout(() => other.deliver({ type: 'presence', member: member.id, presence: message.presence }), 0);
+      return;
+    }
     this.clock.setTimeout(() => this.apply({ kind: 'message', token, message }), 0);
   }
   private heard(ws: PipeSocket) {
@@ -65,13 +71,14 @@ class Pipe {
 
 class PipeSocket implements SocketLike {
   received: ServerMessage[] = [];
+  sent: unknown[] = [];
   dead = false;
   onopen: ((ev: unknown) => void) | null = null;
   onmessage: ((ev: { data: unknown }) => void) | null = null;
   onclose: ((ev: { code: number; reason: string }) => void) | null = null;
   onerror: (() => void) | null = null;
   constructor(private readonly pipe: Pipe, readonly token: string) {}
-  send(data: string) { if (!this.dead) this.pipe.fromClient(this, this.token, data); }
+  send(data: string) { this.sent.push(JSON.parse(data)); if (!this.dead) this.pipe.fromClient(this, this.token, data); }
   close() { this.onclose?.({ code: 1005, reason: '' }); }
   deliver(message: ServerMessage) { if (this.dead) return; this.received.push(message); this.onmessage?.({ data: JSON.stringify(message) }); }
   get snapshots() { return this.received.filter((m): m is ServerMessage & { type: 'snapshot' } => m.type === 'snapshot').map((m) => m.snapshot); }
@@ -218,5 +225,59 @@ describe('partida online pelo cano: RemoteTable ↔ sala', () => {
     expect(ze.table.snapshot.game.scores).toEqual(dita.table.snapshot.game.scores);
     expect(dita.socket.errors).toEqual([]);
     expect(ditaSocket.dead).toBe(true);
+  });
+
+  test('fantasma: os outros veem onde ela anda e para onde os sentados olham, ela não joga, e entre mãos senta no lugar de um bot', () => {
+    const clock = new ManualClock();
+    const pipe = new Pipe(clock);
+    const ze = member(pipe, clock, 'token-ze'), dita = member(pipe, clock, 'token-dita'), nena = member(pipe, clock, 'token-nena');
+    const room = (m: { table: RemoteTable }) => m.table.state.room;
+    clock.settle();
+    ze.table.join('Zé'); dita.table.join('Dita'); nena.table.join('Nena'); clock.settle();
+    ze.table.takeSeat(0); dita.table.takeSeat(1); clock.settle();
+    ze.table.start();
+    clock.runUntil(() => [ze, dita, nena].every((m) => room(m)?.phase === 'playing'));
+    expect(nena.table.snapshot.seat).toBeNull();
+    expect(nena.table.snapshot.ghosts).toEqual([]);
+    expect(ze.table.snapshot.ghosts).toEqual([{ id: 'm3', name: 'Nena', connected: true }]);
+    // o toggle da sala: fantasma vê as cartas de todo mundo
+    expect(nena.table.snapshot.game.hand!.cards.every((held) => held.every((c) => c !== null))).toBe(true);
+
+    // presença: a dela chega aos outros dois (nunca a ela); a de quem senta chega a ela, por cadeira
+    const walk = { x: 2, z: 3, yaw: 1, pitch: 0 }, gaze = { x: 0, z: 1.45, yaw: 0.2, pitch: -0.4 };
+    nena.table.setPresence(walk); ze.table.setPresence(gaze); clock.settle();
+    expect(ze.table.presenceOf('m3')).toEqual(walk);
+    expect(dita.table.presenceOf('m3')).toEqual(walk);
+    expect(nena.table.presenceOf('m3')).toBeUndefined();
+    expect(nena.table.presenceOf(0)).toEqual(gaze);
+    expect(nena.table.presenceOf(1)).toBeUndefined();
+
+    // nenhuma jogada de fantasma passa
+    const before = structuredClone(pipe.state.game);
+    nena.table.play('4c'); nena.table.raise(); nena.table.respond('accept'); nena.table.decideDez('play'); clock.settle();
+    expect(nena.socket.errors.map((e) => (e as { reason: string }).reason)).toEqual(['notSeated', 'notSeated', 'notSeated', 'notSeated']);
+    expect(pipe.state.game).toEqual(before);
+
+    // ela quer a cadeira do Tião (2) no meio da mão: a intenção espera; a mão acaba e ela senta, na dupla de Zé
+    nena.table.takeBotSeat(2);
+    expect(nena.table.state.wantsSeat).toBe(2);
+    expect(nena.socket.sent).not.toContainEqual(expect.objectContaining({ type: 'takeBotSeat' }));
+    person(ze.table, clock); person(dita.table, clock);
+    clock.runUntil(() => nena.table.snapshot.seat === 2, 5_000);
+    expect(nena.table.state.wantsSeat).toBeNull();
+    expect(pipe.state.game!.hand!.phase).toBe('over'); // sentou na pausa, antes da mão seguinte
+    clock.settle(); // o snapshot chega aos outros pelo cano
+    expect(ze.table.snapshot.seats.map((s) => [s.name, s.bot])).toEqual([['Zé', false], ['Dita', false], ['Nena', false], ['Bastião', true]]);
+    expect(ze.table.snapshot.ghosts).toEqual([]);
+    // dali em diante ela é uma cadeira como as outras: só as próprias cartas, e joga
+    person(nena.table, clock);
+    clock.runUntil(() => nena.table.snapshot.game.hand!.phase !== 'over', 5_000);
+    const h = nena.table.snapshot.game.hand!;
+    expect(h.cards[2].every((c) => c !== null)).toBe(true);
+    for (const other of [0, 1, 3] as const) expect(h.cards[other].every((c) => c === null)).toBe(true);
+    clock.runUntil(() => [ze, dita, nena].every((m) => m.table.snapshot.game.over), 5_000);
+    expect(nena.table.snapshot.game.scores).toEqual(ze.table.snapshot.game.scores);
+    // Zé e Nena são dupla: os dois respondem ao truco e a segunda resposta é recusada (o snapshot vale); fora isso, nada foi recusado
+    expect(nena.socket.errors.slice(4).filter((e) => (e as { action: string }).action !== 'respond')).toEqual([]);
   });
 });

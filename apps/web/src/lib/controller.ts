@@ -1,6 +1,6 @@
 import type { CardId, DezAction, GameEvent, RespondAction, Seat } from '@truco/rules';
 import { callName, formatEvent } from './format';
-import { resetLook } from './scene/camera';
+import { resetLook, spawnSeat, standBehind } from './scene/camera';
 import { resetLayout } from './scene/layout';
 import { live, ui, type Prompt } from './state.svelte';
 import type { Table, TableSnapshot } from './table/table';
@@ -18,12 +18,14 @@ export function attachTable(table: Table, opts: { menuOpen: boolean }) {
   ui.log = [];
   resetLayout();
   live.snap = table.snapshot;
-  setView(table.snapshot.seat ?? 0);
+  // fantasma nasce de pé atrás de uma cadeira (cada fantasma novo atrás da seguinte); quem senta olha da própria
+  setView(table.snapshot.seat ?? spawnSeat(table.snapshot.ghosts.length));
   const off = table.subscribe(onTableChange);
   return () => { off(); if (live.table === table) live.table = null; };
 }
 
-export function setView(s: Seat) { ui.view = s; ui.sel = 0; resetLook(); }
+/** Olhar da cadeira `s` (quem senta) ou ficar de pé atrás dela (fantasma). */
+export function setView(s: Seat) { ui.view = s; ui.sel = 0; if (live.snap.seat === null) standBehind(s); else resetLook(); }
 
 /** É a vez desta pessoa jogar uma carta pela cadeira que está vendo. */
 export function myTurn(snap: TableSnapshot, view: Seat) {
@@ -32,11 +34,12 @@ export function myTurn(snap: TableSnapshot, view: Seat) {
 }
 export const mayRaise = (snap: TableSnapshot, view: Seat) => snap.seat === view && snap.canRaise;
 
-/** O que a mesa pergunta a esta pessoa agora, derivado do snapshot. */
+/** O que a mesa pergunta a esta pessoa agora, derivado do snapshot. A um fantasma, nada: nem o fim de jogo (o placar já diz). */
 export function promptOf(snap: TableSnapshot): Prompt {
   const h = snap.game.hand;
+  if (snap.seat === null) return null;
   if (snap.game.over) return { kind: 'over' };
-  if (!h || snap.seat === null || snap.acting !== snap.seat) return null;
+  if (!h || snap.acting !== snap.seat) return null;
   if (h.phase === 'respond') return { kind: 'respond' };
   if (h.phase === 'dezDecision') return { kind: 'dez' };
   return null;

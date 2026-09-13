@@ -268,3 +268,17 @@ describe('visibilidade das cartas', () => {
     expect(late.game!.hand!.cards).toEqual(s.game.hand!.cards);
   });
 });
+
+describe('fantasmas durante a partida', () => {
+  test('o toggle escolhido no lobby vale para o que os fantasmas recebem na partida, e pode mudar no meio dela', () => {
+    const s = tableOfThree();
+    s.say('t1', { type: 'ghostsSeeCards', on: false });
+    s.start('t1');
+    const real = s.game.hand!;
+    expect(s.snapshotFor('t3')!.game!.hand!.cards.flat().every((c) => c === null)).toBe(true);
+    const wire = JSON.stringify(s.snapshotFor('t3'));
+    for (const id of real.cards.flat()) expect(wire).not.toContain(`"${id}"`);
+    s.say('t3', { type: 'ghostsSeeCards', on: true });
+    expect(s.snapshotFor('t3')!.game!.hand!.cards).toEqual(real.cards);
+  });
+});

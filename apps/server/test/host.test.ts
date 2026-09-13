@@ -1,4 +1,5 @@
 import { describe, expect, test } from 'bun:test';
+import type { ServerMessage } from '@truco/protocol';
 import { RoomHost, type Socket } from '../src/host';
 import { silentLog } from '../src/log';
 import { DISCONNECT_GRACE } from '../src/room';
@@ -49,6 +50,39 @@ describe('host: silêncio no socket', () => {
     await sleep(25); // a velha teria vencido agora; a nova tem 25 ms
     expect(fresh.terminated).toBe(false);
     expect(host.state.members[0].connected).toBe(true);
+    host.dispose();
+  });
+});
+
+describe('host: presença', () => {
+  const presences = (ws: { sent: string[] }) => ws.sent.map((d) => JSON.parse(d) as ServerMessage).filter((m) => m.type === 'presence');
+
+  test('a presença de um membro chega aos outros (nunca de volta a ele) no máximo uma vez por intervalo, sempre a mais recente', async () => {
+    const host = new RoomHost('ABCD', silentLog, () => {}, { presenceInterval: 40 });
+    const a = fakeSocket('token-a'), b = fakeSocket('token-b'), c = fakeSocket('token-c');
+    host.connect(a); say(host, a, { type: 'join', nickname: 'Zé' });
+    host.connect(b); say(host, b, { type: 'join', nickname: 'Dita' });
+    host.connect(c); // visitante sem apelido: também vê a mesa chegar
+    const activity = host.state.lastActivity;
+    for (let i = 1; i <= 4; i++) say(host, a, { type: 'presence', presence: { x: i, z: 0, yaw: 0, pitch: 0 } });
+    // a primeira sai na hora; as do meio caem; a última sai quando a janela abre
+    expect(presences(b)).toEqual([{ type: 'presence', member: 'm1', presence: { x: 1, z: 0, yaw: 0, pitch: 0 } }]);
+    expect(presences(a)).toEqual([]);
+    await sleep(60);
+    expect(presences(b).map((m) => (m as { presence: { x: number } }).presence.x)).toEqual([1, 4]);
+    expect(presences(c).map((m) => (m as { presence: { x: number } }).presence.x)).toEqual([1, 4]);
+    // presença não é atividade da sala
+    expect(host.state.lastActivity).toBe(activity);
+    host.dispose();
+  });
+
+  test('presença de quem ainda não entrou com apelido é descartada', () => {
+    const host = new RoomHost('ABCD', silentLog, () => {}, { presenceInterval: 40 });
+    const a = fakeSocket('token-a'), v = fakeSocket('token-v');
+    host.connect(a); say(host, a, { type: 'join', nickname: 'Zé' });
+    host.connect(v);
+    say(host, v, { type: 'presence', presence: { x: 1, z: 0, yaw: 0, pitch: 0 } });
+    expect(presences(a)).toEqual([]);
     host.dispose();
   });
 });

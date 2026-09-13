@@ -1,5 +1,6 @@
 import { MANILHA, RANKS, SUITS, makeDeck, type CardId, type Seat, type Suit } from '@truco/rules';
 import * as THREE from 'three';
+import type { Presence } from '../table/table';
 
 export const TABLE_R = 1.2, TABLE_TOP = 0.76, SEAT_R = 1.55;
 export const CARD_W = 0.19, CARD_H = 0.27;
@@ -29,7 +30,7 @@ export interface Character {
   label: THREE.Sprite; labelOn: THREE.Sprite; bubble: THREE.Sprite; mouthUntil: number; bubbleUntil: number;
 }
 
-const LABEL_COLOR = '#dae0da', LABEL_ON_COLOR = '#66ef73';
+const LABEL_COLOR = '#dae0da', LABEL_ON_COLOR = '#66ef73', GHOST_LABEL_COLOR = '#b8cfee';
 
 /** Humanoide low-poly sentado, olhando para -z local. Origem no chão, sob a cadeira. */
 export function makeCharacter(seat: Seat, p: Preset, name: string): Character {
@@ -115,6 +116,38 @@ export function sayTo(ch: Character, text: string) {
   x.font = `bold 38px ${UI_FONT}`; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillStyle = '#100f10'; x.fillText(text, 160, 42);
   const mat = ch.bubble.material as THREE.SpriteMaterial;
   mat.map?.dispose(); mat.map = canvasTexture(c); mat.needsUpdate = true; ch.bubble.visible = true;
+}
+
+/** Outro fantasma na mesa: vulto translúcido de pé, com o nome em cima; `target` é a presença mais recente dele, seguida por quadro. */
+export interface Ghost { id: string; name: string; g: THREE.Group; head: THREE.Group; label: THREE.Sprite; mat: THREE.MeshLambertMaterial; target: Presence }
+
+export function makeGhost(id: string, name: string, at: Presence): Ghost {
+  const g = new THREE.Group();
+  const mat = new THREE.MeshLambertMaterial({ color: 0xcfe3ff, transparent: true, opacity: 0.4, depthWrite: false });
+  const body = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.28, 1.0, 10), mat); body.position.y = 0.95; g.add(body);
+  const head = new THREE.Group(); head.position.y = 1.55;
+  head.add(new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.32, 0.3), mat));
+  const eye = new THREE.MeshLambertMaterial({ color: 0x1a1a1a, transparent: true, opacity: 0.85 });
+  for (const x of [-0.065, 0.065]) head.add(place(new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.05, 0.01), eye), x, 0.03, -0.151));
+  g.add(head);
+  const label = place(makeTextSprite(name, GHOST_LABEL_COLOR), 0, 1.95, 0); g.add(label);
+  g.position.set(at.x, 0, at.z); g.rotation.y = at.yaw; head.rotation.x = at.pitch;
+  return { id, name, g, head, label, mat, target: { ...at } };
+}
+
+/** O fantasma saiu da mesa: solta o que a GPU guardava dele. */
+export function disposeGhost(gh: Ghost) {
+  gh.g.traverse((o) => { if (o instanceof THREE.Mesh) { o.geometry.dispose(); (o.material as THREE.Material).dispose(); } });
+  const mat = gh.label.material as THREE.SpriteMaterial;
+  mat.map?.dispose(); mat.dispose();
+}
+
+/** Troca o nome sobre a cabeça de um fantasma. */
+export function nameGhost(gh: Ghost, name: string) {
+  if (gh.name === name) return;
+  gh.name = name;
+  const mat = gh.label.material as THREE.SpriteMaterial;
+  mat.map?.dispose(); mat.map = textTexture(name, GHOST_LABEL_COLOR); mat.needsUpdate = true;
 }
 
 /* ---------- cartas procedurais ---------- */

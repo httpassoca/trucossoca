@@ -24,14 +24,15 @@
     if (ACCENTS[accent]) root.style.setProperty('--ss-accent', ACCENTS[accent]); else root.style.removeProperty('--ss-accent');
   });
 
-  const shortcuts = [
+  const shortcuts = $derived([
+    ...(snap.seat === null ? [{ group: 'fantasma', rows: [['Andar pela mesa', ['W', 'A', 'S', 'D']], ['Olhar ao redor', ['mouse']], ['Ficar atrás da próxima cadeira', ['Tab']]] }] : []),
     { group: 'na mesa', rows: [
       ['Olhar ao redor', ['mouse']], ['Escolher carta', ['←', '→']], ['Jogar a carta escolhida', ['↵', 'espaço']],
       ['Jogar direto', ['1', '2', '3']], ['Pedir truco / seis / dez / doze', ['T']], ['Cobrir a próxima carta', ['C']], ['Olhar de outra cadeira', ['Tab']],
     ] },
     { group: 'quando pedem truco', rows: [['Aceitar / jogar', ['↵']], ['Correr', ['X']], ['Pedir mais', ['R']]] },
     { group: 'menu', rows: [['Abrir / fechar este menu, soltar o mouse', ['Esc']]] },
-  ] as { group: string; rows: [string, string[]][] }[];
+  ] as { group: string; rows: [string, string[]][] }[]);
 </script>
 
 {#if ui.menuOpen}

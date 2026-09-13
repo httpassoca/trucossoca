@@ -1,7 +1,7 @@
-import { CLOSE_REPLACED, CLOSE_ROOM_ENDED, CLOSE_ROOM_NOT_FOUND, DEFAULT_TEAM_NAMES, PING_INTERVAL, type ClientMessage, type RoomSnapshot, type ServerMessage } from '@truco/protocol';
+import { CLOSE_REPLACED, CLOSE_ROOM_ENDED, CLOSE_ROOM_NOT_FOUND, DEFAULT_TEAM_NAMES, PING_INTERVAL, type ClientMessage, type Presence, type RoomSnapshot, type ServerMessage } from '@truco/protocol';
 import { canRaise, coverAllowed, createGame, viewFor, type CardId, type DezAction, type GameEvent, type GameView, type RespondAction, type Rules, type Seat, type Team } from '@truco/rules';
 import { realClock, type Clock } from './clock';
-import { actingFor, type SeatView, type Table, type TableListener, type TableSnapshot } from './table';
+import { actingFor, type GhostView, type SeatView, type Table, type TableListener, type TableSnapshot } from './table';
 
 export type RemoteStatus = 'idle' | 'connecting' | 'open' | 'reconnecting' | 'closed';
 /** Por que a conexão fechou de vez (códigos 4xxx do servidor). */
@@ -13,6 +13,8 @@ export interface RemoteState {
   reason: ClosedReason;
   /** tentativas de reconexão seguidas; zera quando abre */
   attempt: number;
+  /** cadeira de bot em que esta pessoa (fantasma) quer sentar quando a mão acabar; null = nenhuma */
+  wantsSeat: Seat | null;
 }
 
 /**
@@ -44,7 +46,9 @@ const CLOSE_REASONS: Record<number, ClosedReason> = { [CLOSE_ROOM_NOT_FOUND]: 'r
  * As jogadas viram mensagens; o servidor aplica ou recusa (a recusa é ignorada: o snapshot que temos continua valendo).
  */
 export class RemoteTable implements Table {
-  private st: RemoteState = { status: 'idle', room: null, reason: null, attempt: 0 };
+  private st: RemoteState = { status: 'idle', room: null, reason: null, attempt: 0, wantsSeat: null };
+  /** a presença mais recente de cada membro, por id; some com quem sai da sala */
+  private readonly presences = new Map<string, Presence>();
   private snap: TableSnapshot;
   private coverNext = false;
   private socket: SocketLike | null = null;
@@ -118,6 +122,23 @@ export class RemoteTable implements Table {
   start() { this.send({ type: 'start' }); }
   /** passa a cadeira de outra pessoa sentada, parada há `IDLE_HANDOFF`, a um bot (o servidor confere) */
   handToBot(member: string) { this.send({ type: 'handToBot', member }); }
+  /**
+   * Fantasma senta no lugar do bot da cadeira `seat`: entre mãos vai na hora; no meio de uma mão fica como intenção
+   * e vai quando a mão acabar (a pausa é curta demais para abrir o menu na hora certa). A intenção só cai quando um
+   * snapshot a resolve (a pessoa sentou, a cadeira deixou de ser de um bot, a partida acabou): se o pedido chegou tarde
+   * e o servidor o recusou, ela vai de novo na pausa seguinte. `null` desiste.
+   */
+  takeBotSeat(seat: Seat | null) {
+    const g = this.snap.game;
+    if (seat === null || this.snap.seat !== null || !this.snap.seats[seat].bot || g.over) { this.set({ wantsSeat: null }); return; }
+    if (this.st.wantsSeat !== seat) this.set({ wantsSeat: seat });
+    if (g.hand?.phase === 'over') this.send({ type: 'takeBotSeat', seat });
+  }
+  setPresence(presence: Presence) { this.send({ type: 'presence', presence }); }
+  presenceOf(who: Seat | string) {
+    const id = typeof who === 'string' ? who : this.st.room?.members.find((m) => m.seat === who)?.id;
+    return id === undefined ? undefined : this.presences.get(id);
+  }
 
   // mesa — cada jogada é uma mensagem pela cadeira local; o servidor decide
   /** no fim de jogo: revanche, que devolve a sala ao lobby */
@@ -148,13 +169,16 @@ export class RemoteTable implements Table {
     try { msg = JSON.parse(raw); } catch { return; }
     this.heardSincePing = true;
     if (msg.type === 'events') { this.pendingEvents.push(...msg.events); return; }
+    if (msg.type === 'presence') { this.presences.set(msg.member, msg.presence); return; }
     if (msg.type !== 'snapshot') return; // pong e erros: nada a fazer
     this.set({ room: msg.snapshot });
+    for (const id of this.presences.keys()) if (!msg.snapshot.members.some((m) => m.id === id)) this.presences.delete(id);
     if (msg.snapshot.you === null && this.joinedAs) this.send({ type: 'join', nickname: this.joinedAs }); // a sala nos esqueceu enquanto estávamos fora
     const events = this.pendingEvents; this.pendingEvents = [];
     // a intenção de cobrir vale para uma jogada: cai quando a nossa carta chega, ou quando a mão vira
     if (events.some((e) => e.type === 'newHand' || (e.type === 'play' && e.seat === this.snap.seat))) this.coverNext = false;
     this.publish(events);
+    if (this.st.wantsSeat !== null) this.takeBotSeat(this.st.wantsSeat); // a intenção de sentar: vai agora, ou cai se já não vale
   }
 
   private publish(events: GameEvent[]) {
@@ -172,8 +196,9 @@ export class RemoteTable implements Table {
       const m = room?.members.find((o) => o.seat === s);
       return { name: m?.nickname ?? EMPTY_SEAT, bot: m?.bot ?? false, botControlled: m?.botControlled ?? false };
     });
+    const ghosts: GhostView[] = (room?.members ?? []).filter((m) => m.seat === null && m.id !== room?.you).map((m) => ({ id: m.id, name: m.nickname, connected: m.connected }));
     return {
-      game, seat, seats, teams: room ? [...room.teams] : [...DEFAULT_TEAM_NAMES], acting: actingFor(game, seat), coverNext: this.coverNext,
+      game, seat, seats, teams: room ? [...room.teams] : [...DEFAULT_TEAM_NAMES], ghosts, acting: actingFor(game, seat), coverNext: this.coverNext,
       canRaise: seat !== null && canRaise(game, seat), canCover: coverAllowed(game), rulesEditable: false, restart: seat !== null && game.over ? 'rematch' : null,
     };
   }

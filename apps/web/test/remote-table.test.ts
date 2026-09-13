@@ -345,3 +345,115 @@ describe('RemoteTable: as jogadas', () => {
     expect(table.snapshot.restart).toBeNull();
   });
 });
+
+describe('RemoteTable: fantasmas', () => {
+  test('a mesa lista os outros sem cadeira como fantasmas (nunca a própria pessoa)', () => {
+    const { table, last } = setup();
+    table.connect(); last().open();
+    const { snapshot } = playing('all'); // eu sou Dita (m5), fantasma
+    snapshot.members.push({ ...human('m6', 'Bastião 2'), connected: false });
+    last().receive({ type: 'snapshot', snapshot });
+    expect(table.snapshot.ghosts).toEqual([{ id: 'm6', name: 'Bastião 2', connected: false }]);
+    const seated = playing(1).snapshot; // eu sou Zé (m2), na cadeira 1; Dita assiste
+    last().receive({ type: 'snapshot', snapshot: seated });
+    expect(table.snapshot.ghosts).toEqual([{ id: 'm5', name: 'Dita', connected: true }]);
+  });
+
+  test('a presença dos outros fica disponível por id (fantasma) ou por cadeira, e some com quem sai da sala', () => {
+    const { table, last } = setup();
+    table.connect(); last().open();
+    const { snapshot } = playing('all');
+    snapshot.members.push(human('m6', 'Bastião 2'));
+    last().receive({ type: 'snapshot', snapshot });
+    const got: unknown[] = [];
+    table.subscribe((s, ev) => got.push([s, ev]));
+    const p = { x: 1, z: -2, yaw: 0.5, pitch: -0.2 };
+    last().receive({ type: 'presence', member: 'm6', presence: p });
+    last().receive({ type: 'presence', member: 'm2', presence: { ...p, x: 9 } });
+    expect(table.presenceOf('m6')).toEqual(p);
+    expect(table.presenceOf(1)).toEqual({ ...p, x: 9 });
+    expect(table.presenceOf(0)).toBeUndefined();
+    expect(got).toEqual([]); // presença não é uma mudança da mesa
+    const gone = structuredClone(snapshot);
+    gone.members = gone.members.filter((m) => m.id !== 'm6');
+    last().receive({ type: 'snapshot', snapshot: gone });
+    expect(table.presenceOf('m6')).toBeUndefined();
+    expect(table.presenceOf(1)).toEqual({ ...p, x: 9 });
+  });
+
+  test('a própria presença vira mensagem do protocolo', () => {
+    const { table, last } = setup();
+    table.connect(); last().open();
+    table.setPresence({ x: 1, z: 2, yaw: 3, pitch: 0 });
+    expect(last().sent).toEqual([{ type: 'presence', presence: { x: 1, z: 2, yaw: 3, pitch: 0 } }]);
+  });
+
+  test('sentar no lugar de um bot: entre mãos vai na hora; no meio da mão fica como intenção e vai quando a mão acabar', () => {
+    const { table, last } = setup();
+    table.connect(); last().open();
+    const { snapshot } = playing('all'); // mão em curso
+    last().receive({ type: 'snapshot', snapshot });
+    table.takeBotSeat(2);
+    expect(last().sent).toEqual([]);
+    expect(table.state.wantsSeat).toBe(2);
+    const paused = structuredClone(snapshot);
+    paused.game!.hand!.phase = 'over';
+    last().receive({ type: 'snapshot', snapshot: paused });
+    expect(last().sent).toEqual([{ type: 'takeBotSeat', seat: 2 }]);
+    // a intenção fica até o servidor mostrar o resultado: se o pedido chegou tarde e foi recusado, vai de novo na pausa seguinte
+    expect(table.state.wantsSeat).toBe(2);
+    last().receive({ type: 'error', action: 'takeBotSeat', reason: 'midHand' });
+    last().receive({ type: 'snapshot', snapshot });
+    expect(last().sent).toHaveLength(1);
+    last().receive({ type: 'snapshot', snapshot: paused });
+    expect(last().sent).toHaveLength(2);
+    // sentou: a intenção some
+    const seated = structuredClone(paused);
+    seated.members[4] = { ...seated.members[4], seat: 2 }; seated.members.splice(2, 1);
+    last().receive({ type: 'snapshot', snapshot: seated });
+    expect(table.snapshot.seat).toBe(2);
+    expect(table.state.wantsSeat).toBeNull();
+    expect(last().sent).toHaveLength(2);
+  });
+
+  test('entre mãos o pedido sai na hora e a intenção espera a confirmação', () => {
+    const { table, last } = setup();
+    table.connect(); last().open();
+    const paused = playing('all').snapshot;
+    paused.game!.hand!.phase = 'over';
+    last().receive({ type: 'snapshot', snapshot: paused });
+    table.takeBotSeat(0);
+    expect(last().sent).toEqual([{ type: 'takeBotSeat', seat: 0 }]);
+    expect(table.state.wantsSeat).toBe(0);
+  });
+
+  test('a intenção de sentar cai se a pessoa desistir, se a cadeira deixar de ser de um bot, no fim de jogo ou se ela já sentou', () => {
+    const { table, last } = setup();
+    table.connect(); last().open();
+    const { snapshot } = playing('all');
+    last().receive({ type: 'snapshot', snapshot });
+    table.takeBotSeat(2);
+    table.takeBotSeat(null);
+    expect(table.state.wantsSeat).toBeNull();
+    table.takeBotSeat(2);
+    const taken = structuredClone(snapshot);
+    taken.members[2] = { ...taken.members[2], bot: false }; // outra pessoa sentou ali
+    last().receive({ type: 'snapshot', snapshot: taken });
+    expect(table.state.wantsSeat).toBeNull();
+    table.takeBotSeat(0);
+    const over = structuredClone(snapshot);
+    over.game!.over = true; over.game!.winner = 0; over.game!.hand!.phase = 'over';
+    last().receive({ type: 'snapshot', snapshot: over }); // fim de jogo: não há mão seguinte para sentar
+    expect(table.state.wantsSeat).toBeNull();
+    last().receive({ type: 'snapshot', snapshot });
+    table.takeBotSeat(0);
+    const seated = structuredClone(snapshot);
+    seated.members[4] = { ...seated.members[4], seat: 3 }; seated.members.splice(3, 1);
+    last().receive({ type: 'snapshot', snapshot: seated });
+    expect(table.state.wantsSeat).toBeNull();
+    expect(last().sent).toEqual([]);
+    // quem senta não pede cadeira de bot
+    table.takeBotSeat(0);
+    expect(table.state.wantsSeat).toBeNull();
+  });
+});

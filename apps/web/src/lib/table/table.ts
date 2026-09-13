@@ -1,8 +1,13 @@
-import { DEFAULT_TEAM_NAMES } from '@truco/protocol';
+import { DEFAULT_TEAM_NAMES, PRESENCE_INTERVAL, type Presence } from '@truco/protocol';
 import { createGame, responderSeat, teamOf, viewFor, type CardId, type DezAction, type GameEvent, type GameReadable, type GameView, type RespondAction, type Seat } from '@truco/rules';
 
 /** Quem ocupa cada cadeira, como a interface mostra: `bot` é um bot de verdade; `botControlled`, uma pessoa por quem um bot joga enquanto ela está ausente. */
 export interface SeatView { name: string; bot: boolean; botControlled: boolean }
+/** Outra pessoa sem cadeira, que anda pela mesa; `id` é a chave da presença dela. */
+export interface GhostView { id: string; name: string; connected: boolean }
+/** A cena fala de presença por aqui, nunca pelo protocolo (ADR 0003): o tipo e o ritmo em que a própria sai. */
+export type { Presence };
+export { PRESENCE_INTERVAL };
 
 /**
  * O que a mesa mostra a este cliente. É um objeto novo a cada mudança, nunca mutado no lugar,
@@ -16,6 +21,8 @@ export interface TableSnapshot {
   seats: SeatView[];
   /** nomes das duplas: a 0 senta nas cadeiras 0 e 2, a 1 nas 1 e 3 */
   teams: [string, string];
+  /** os outros fantasmas da mesa (nunca esta pessoa); offline não há */
+  ghosts: GhostView[];
   /** de quem a mesa espera uma ação (pessoa ou bot); -1 = ninguém (mão encerrada, fim de jogo) */
   acting: Seat | -1;
   /** a próxima carta da cadeira local vai coberta */
@@ -45,6 +52,10 @@ export interface Table {
   toggleCover(): void;
   subscribe(listener: TableListener): () => void;
   dispose(): void;
+  /** onde esta pessoa está e para onde olha; online vai aos outros (a mesa local ignora) */
+  setPresence(p: Presence): void;
+  /** a presença mais recente de um fantasma (por id) ou de quem senta numa cadeira; undefined se nunca chegou. Lida por quadro, fora do snapshot */
+  presenceOf(who: Seat | string): Presence | undefined;
 }
 
 /**
@@ -62,7 +73,7 @@ export function actingFor(g: GameReadable, seat: Seat | null): Seat | -1 {
 /** Mesa sem partida e sem ninguém: o que a interface mostra antes de uma mesa ser encaixada. */
 export function emptySnapshot(): TableSnapshot {
   return {
-    game: viewFor(createGame(), 'all'), seat: null, seats: [0, 1, 2, 3].map(() => ({ name: '', bot: false, botControlled: false })), teams: [...DEFAULT_TEAM_NAMES],
+    game: viewFor(createGame(), 'all'), seat: null, seats: [0, 1, 2, 3].map(() => ({ name: '', bot: false, botControlled: false })), teams: [...DEFAULT_TEAM_NAMES], ghosts: [],
     acting: -1, coverNext: false, canRaise: false, canCover: false, rulesEditable: false, restart: null,
   };
 }

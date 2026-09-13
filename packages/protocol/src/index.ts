@@ -15,6 +15,10 @@ export const PING_INTERVAL = 15_000;
 export const SOCKET_IDLE_TIMEOUT = 30_000;
 /** Pessoa sentada que não age há este tempo pode ter a cadeira passada a um bot por outra pessoa sentada. */
 export const IDLE_HANDOFF = 60_000;
+/** Presença (posição e olhar) sai do cliente e é repassada pelo servidor no máximo uma vez por este intervalo, por pessoa. */
+export const PRESENCE_INTERVAL = 100;
+/** Até onde uma presença pode estar do centro da mesa, em metros, em cada eixo; e o máximo de um ângulo, em radianos (o cliente manda entre -π e π, ou perto). */
+const PRESENCE_RANGE = 30, PRESENCE_ANGLE_RANGE = 4 * Math.PI;
 /** Id público de membro: `m` e um número. */
 const MEMBER_ID_MAX = 16;
 
@@ -22,6 +26,9 @@ const MEMBER_ID_MAX = 16;
 export const CLOSE_ROOM_NOT_FOUND = 4404;
 export const CLOSE_ROOM_ENDED = 4410;
 export const CLOSE_REPLACED = 4409;
+
+/** Onde alguém está na mesa (x, z no chão) e para onde olha (yaw, pitch da câmera, em radianos). */
+export interface Presence { x: number; z: number; yaw: number; pitch: number }
 
 // cliente → servidor
 export type ClientMessage =
@@ -42,10 +49,14 @@ export type ClientMessage =
   | { type: 'rematch' }
   /** passa a cadeira de outra pessoa sentada, parada há `IDLE_HANDOFF`, a um bot; ela retoma quando agir */
   | { type: 'handToBot'; member: string }
+  /** fantasma senta na cadeira de um bot entre mãos e passa a jogar por ela */
+  | { type: 'takeBotSeat'; seat: Seat }
+  /** onde esta pessoa está e para onde olha; passa por fora da sala, repassada aos outros (não conta como atividade) */
+  | { type: 'presence'; presence: Presence }
   | { type: 'ping' };
 
-/** Por que uma jogada foi recusada: fora da partida, sem cadeira, o motor não aceitou (fora da vez, fase errada…), ou a pessoa a passar ainda age. */
-export type ActionError = 'notPlaying' | 'notSeated' | 'illegal' | 'notIdle';
+/** Por que uma jogada foi recusada: fora da partida, sem cadeira, o motor não aceitou (fora da vez, fase errada…), a pessoa a passar ainda age, ou a mão está em curso. */
+export type ActionError = 'notPlaying' | 'notSeated' | 'illegal' | 'notIdle' | 'midHand';
 
 // servidor → cliente
 export type ServerMessage =
@@ -54,6 +65,8 @@ export type ServerMessage =
   | { type: 'events'; events: GameEvent[] }
   /** jogada recusada; o cliente ignora com segurança (o snapshot que ele tem continua valendo) */
   | { type: 'error'; action: ClientMessage['type']; reason: ActionError }
+  /** onde outro membro está e para onde olha; chega por fora dos snapshots, várias vezes por segundo */
+  | { type: 'presence'; member: string; presence: Presence }
   | { type: 'pong' };
 
 export type RoomPhase = 'lobby' | 'playing';
@@ -115,6 +128,12 @@ export function parseClientMessage(raw: unknown): ClientMessage | null {
       return { type: m.type, nickname: m.nickname };
     case 'takeSeat':
       return isTeam(m.team) ? { type: 'takeSeat', team: m.team } : null;
+    case 'takeBotSeat':
+      return isSeat(m.seat) ? { type: 'takeBotSeat', seat: m.seat } : null;
+    case 'presence': {
+      const presence = parsePresence(m.presence);
+      return presence ? { type: 'presence', presence } : null;
+    }
     case 'renameTeam':
       if (!isTeam(m.team) || typeof m.name !== 'string' || m.name.length > TEAM_NAME_MAX * 4) return null;
       return { type: 'renameTeam', team: m.team, name: m.name };
@@ -129,6 +148,16 @@ export function parseClientMessage(raw: unknown): ClientMessage | null {
 }
 
 const isTeam = (v: unknown): v is Team => v === 0 || v === 1;
+const isSeat = (v: unknown): v is Seat => v === 0 || v === 1 || v === 2 || v === 3;
+const isNum = (v: unknown, range: number): v is number => typeof v === 'number' && Number.isFinite(v) && Math.abs(v) <= range;
+
+/** Presença vinda do cliente: quatro números finitos, a posição dentro da mesa. */
+function parsePresence(raw: unknown): Presence | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const p = raw as Record<string, unknown>;
+  if (!isNum(p.x, PRESENCE_RANGE) || !isNum(p.z, PRESENCE_RANGE) || !isNum(p.yaw, PRESENCE_ANGLE_RANGE) || !isNum(p.pitch, PRESENCE_ANGLE_RANGE)) return null;
+  return { x: p.x, z: p.z, yaw: p.yaw, pitch: p.pitch };
+}
 const isCardId = (v: unknown): v is CardId => typeof v === 'string' && v.length === 2 && (RANKS as string[]).includes(v[0]) && v[1] in SUITS;
 const isInt = (v: unknown, min: number, max: number): v is number => typeof v === 'number' && Number.isInteger(v) && v >= min && v <= max;
 

@@ -2,7 +2,7 @@
   import { onMount, type Snippet } from 'svelte';
   import { attachTable } from '../controller';
   import Hud from '../hud/Hud.svelte';
-  import { onKey } from '../input';
+  import { onKey, onKeyUp } from '../input';
   import Scene from '../scene/Scene.svelte';
   import type { Table } from '../table/table';
 
@@ -12,7 +12,7 @@
   onMount(() => attachTable(table, { menuOpen }));
 </script>
 
-<svelte:window onkeydown={onKey} />
+<svelte:window onkeydown={onKey} onkeyup={onKeyUp} />
 
 <Scene />
 <Hud {room} />

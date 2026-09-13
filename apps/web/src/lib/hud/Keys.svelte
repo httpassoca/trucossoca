@@ -13,7 +13,10 @@
 
 <div class="tm-keys">
   {#if !ui.locked && !ui.menuOpen}<span class="tm-k on"><Kbd keys={['clique']} /><span>na mesa para olhar com o mouse</span></span>{/if}
-  {#if mine}
+  {#if snap.seat === null}
+    <span class="tm-k hot"><Kbd keys={['W', 'A', 'S', 'D']} /><span>andar</span></span>
+    <span class="tm-k"><Kbd keys={['Tab']} /><span>atrás da próxima cadeira</span></span>
+  {:else if mine}
     <span class="tm-k hot"><Kbd keys={['←', '→']} /><span>escolher</span></span>
     <span class="tm-k hot"><Kbd keys={['↵']} /><span>jogar</span></span>
     <span class="tm-k"><Kbd keys={['1', '2', '3']} /><span>direto</span></span>
@@ -22,6 +25,6 @@
   {:else if raisable}
     <span class="tm-k"><Kbd keys={['T']} /><span>trucar</span></span>
   {/if}
-  <span class="tm-k"><Kbd keys={['Tab']} /><span>cadeira</span></span>
+  {#if snap.seat !== null}<span class="tm-k"><Kbd keys={['Tab']} /><span>cadeira</span></span>{/if}
   <span class="tm-k"><Kbd keys={['Esc']} /><span>menu</span></span>
 </div>

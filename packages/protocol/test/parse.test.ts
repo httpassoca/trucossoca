@@ -82,3 +82,19 @@ describe('parseClientMessage: as jogadas', () => {
     expect(parseClientMessage(JSON.stringify({ type: 'decideDez', action: 'accept' }))).toBeNull();
   });
 });
+
+describe('parseClientMessage: fantasmas', () => {
+  test('presença leva posição no chão e olhar, todos números finitos', () => {
+    expect(parseClientMessage(JSON.stringify({ type: 'presence', presence: { x: 1.5, z: -2, yaw: 0.3, pitch: -0.1 } }))).toEqual({ type: 'presence', presence: { x: 1.5, z: -2, yaw: 0.3, pitch: -0.1 } });
+    expect(parseClientMessage(JSON.stringify({ type: 'presence', presence: { x: 1, z: 2, yaw: 0 } }))).toBeNull();
+    expect(parseClientMessage(JSON.stringify({ type: 'presence', presence: { x: '1', z: 2, yaw: 0, pitch: 0 } }))).toBeNull();
+    expect(parseClientMessage(JSON.stringify({ type: 'presence', presence: { x: 1e9, z: 2, yaw: 0, pitch: 0 } }))).toBeNull();
+    expect(parseClientMessage(JSON.stringify({ type: 'presence' }))).toBeNull();
+  });
+
+  test('sentar no lugar de um bot leva a cadeira', () => {
+    expect(parseClientMessage(JSON.stringify({ type: 'takeBotSeat', seat: 3 }))).toEqual({ type: 'takeBotSeat', seat: 3 });
+    expect(parseClientMessage(JSON.stringify({ type: 'takeBotSeat', seat: 4 }))).toBeNull();
+    expect(parseClientMessage(JSON.stringify({ type: 'takeBotSeat' }))).toBeNull();
+  });
+});

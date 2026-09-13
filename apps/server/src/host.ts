@@ -1,10 +1,13 @@
-import { CLOSE_REPLACED, CLOSE_ROOM_ENDED, parseClientMessage, SOCKET_IDLE_TIMEOUT } from '@truco/protocol';
+import { CLOSE_REPLACED, CLOSE_ROOM_ENDED, parseClientMessage, PRESENCE_INTERVAL, SOCKET_IDLE_TIMEOUT, type Presence } from '@truco/protocol';
 import type { ServerWebSocket } from 'bun';
 import type { Log } from './log';
 import { createRoom, DEFAULT_PACE, step, timerKey, type RoomInput, type RoomPace, type RoomState } from './room';
 
-/** `now`: hora de nascimento; `pace`: ritmo da mesa; `silence`: quanto um socket pode ficar sem mandar nada antes de ser derrubado. */
-export interface HostOptions { now?: number; pace?: RoomPace; silence?: number }
+/**
+ * `now`: hora de nascimento; `pace`: ritmo da mesa; `silence`: quanto um socket pode ficar sem mandar nada antes de ser
+ * derrubado; `presenceInterval`: o mínimo entre duas presenças repassadas da mesma pessoa.
+ */
+export interface HostOptions { now?: number; pace?: RoomPace; silence?: number; presenceInterval?: number }
 
 export interface SocketData { code: string; token: string }
 export type Socket = ServerWebSocket<SocketData>;
@@ -16,6 +19,8 @@ export type Socket = ServerWebSocket<SocketData>;
  * derrubado como se tivesse caído, e a sala fica sabendo desde quando a pessoa está muda (a tolerância
  * dela conta dali). A rede que morre sem fechar o socket não chega de outro jeito; o `idleTimeout` do Bun
  * é a rede de segurança abaixo deste.
+ * Presença (onde cada pessoa está e para onde olha) não entra na sala: o host repassa a de cada membro aos
+ * outros sockets no máximo uma vez por `presenceInterval`, guardando só a mais recente enquanto a janela não abre.
  */
 export class RoomHost {
   state: RoomState;
@@ -24,10 +29,14 @@ export class RoomHost {
   /** por socket: o timer de silêncio e quando ele mandou algo pela última vez */
   private readonly silences = new Map<Socket, { handle: ReturnType<typeof setTimeout>; heardAt: number }>();
   private readonly silence: number;
+  private readonly presenceInterval: number;
+  /** por token: a última presença recebida, quando a última foi repassada e o timer da próxima, se a janela ainda não abriu */
+  private readonly presences = new Map<string, { latest: Presence; sentAt: number; handle?: ReturnType<typeof setTimeout> }>();
 
   constructor(code: string, private readonly log: Log, private readonly onDead: (code: string) => void, opts: HostOptions = {}) {
     const now = opts.now ?? Date.now();
     this.silence = opts.silence ?? SOCKET_IDLE_TIMEOUT;
+    this.presenceInterval = opts.presenceInterval ?? PRESENCE_INTERVAL;
     this.state = createRoom(code, now, opts.pace ?? DEFAULT_PACE);
     this.syncTimers(now);
     log('room.created', { room: code });
@@ -52,7 +61,36 @@ export class RoomHost {
     this.resetSilence(ws);
     const message = parseClientMessage(typeof raw === 'string' ? raw : raw.toString());
     if (!message) { this.log('room.badMessage', { room: this.code, token: ws.data.token.slice(0, 8) }); return; }
+    if (message.type === 'presence') { this.relayPresence(ws.data.token, message.presence); return; }
     this.apply({ kind: 'message', token: ws.data.token, message });
+  }
+
+  /** Guarda a presença mais recente deste token e a repassa agora, se a janela abriu, ou quando abrir. */
+  private relayPresence(token: string, presence: Presence) {
+    if (!this.state.members.some((m) => m.token === token)) return; // visitante sem apelido não está na mesa
+    let p = this.presences.get(token);
+    if (!p) { p = { latest: presence, sentAt: -Infinity }; this.presences.set(token, p); }
+    p.latest = presence;
+    if (p.handle) return; // a mais recente sai quando o timer vencer
+    const now = Date.now();
+    const wait = p.sentAt + this.presenceInterval - now;
+    if (wait <= 0) { this.flushPresence(token, now); return; }
+    p.handle = setTimeout(() => { p.handle = undefined; this.flushPresence(token, Date.now()); }, wait);
+  }
+
+  private flushPresence(token: string, now: number) {
+    const p = this.presences.get(token);
+    const member = this.state.members.find((m) => m.token === token);
+    if (!p || !member) return;
+    p.sentAt = now;
+    const raw = JSON.stringify({ type: 'presence', member: member.id, presence: p.latest });
+    for (const [t, ws] of this.sockets) if (t !== token) ws.send(raw);
+  }
+
+  private forgetPresence(token: string) {
+    const p = this.presences.get(token);
+    if (p?.handle) clearTimeout(p.handle);
+    this.presences.delete(token);
   }
 
   private apply(input: RoomInput) {
@@ -67,6 +105,7 @@ export class RoomHost {
     if (state.phase === 'dead') {
       for (const ws of this.sockets.values()) { this.clearSilence(ws); ws.close(CLOSE_ROOM_ENDED, 'sala encerrada por inatividade'); }
       this.sockets.clear();
+      for (const token of this.presences.keys()) this.forgetPresence(token);
     }
     this.syncTimers(now);
     if (state.phase === 'dead') this.onDead(this.code);
@@ -77,6 +116,7 @@ export class RoomHost {
     for (const h of this.handles.values()) clearTimeout(h);
     this.handles.clear();
     for (const ws of this.sockets.values()) this.clearSilence(ws);
+    for (const token of this.presences.keys()) this.forgetPresence(token);
   }
 
   /** Tira o socket da sala; `since` = desde quando ele estava mudo, quando foi o silêncio que o derrubou. */
@@ -84,6 +124,7 @@ export class RoomHost {
     this.clearSilence(ws);
     if (this.sockets.get(ws.data.token) !== ws) return; // já substituído por outra aba, ou já derrubado pelo silêncio
     this.sockets.delete(ws.data.token);
+    this.forgetPresence(ws.data.token);
     this.apply(since === undefined ? { kind: 'disconnect', token: ws.data.token } : { kind: 'disconnect', token: ws.data.token, since });
   }
 

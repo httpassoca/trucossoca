@@ -79,8 +79,12 @@ O nome que uma pessoa escolhe ao entrar na sala. Não há conta nem cadastro.
 _Evitar_: usuário, login, conta
 
 **Fantasma** (`ghost`):
-Pessoa na sala sem cadeira. Anda livremente pela mesa, é vista por todos e não interage com o jogo. Vê todas as cartas por padrão; a sala pode esconder.
+Pessoa na sala sem cadeira. Anda livremente pela mesa, é vista por todos e não interage com o jogo. Vê todas as cartas por padrão; a sala pode esconder. Entre mãos, pode sentar no lugar de um bot e entrar na partida.
 _Evitar_: espectador, observador, viewer
+
+**Presença** (`presence`):
+Onde uma pessoa está na mesa e para onde olha. Sai de cada aba até dez vezes por segundo e chega às outras por fora do estado da sala; não conta como atividade. De um fantasma, os outros usam a posição e o olhar; de quem senta, só o olhar (a posição é a da cadeira).
+_Evitar_: posição, tracking, telemetria
 
 **Bot** (`bot`):
 Ocupante de cadeira controlado pelo servidor. Preenche cadeiras vazias e joga pela cadeira de quem cai (depois de vinte segundos) ou fica parada (depois de um minuto, quando outra pessoa sentada passa a cadeira), até a pessoa voltar ou agir; a cadeira continua sendo dela.

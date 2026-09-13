@@ -70,6 +70,9 @@ export class LocalTable implements Table {
     return () => { this.listeners.delete(listener); };
   }
   dispose() { this.clearTimer(); this.listeners.clear(); }
+  /** offline ninguém mais está na mesa: presença não vai nem vem */
+  setPresence() {}
+  presenceOf() { return undefined; }
 
   private newHand() {
     this.clearTimer();
@@ -92,7 +95,7 @@ export class LocalTable implements Table {
   private takeSnapshot(): TableSnapshot {
     return {
       game: viewFor(this.game, 'all'), seat: this.seat, acting: this.acting(), coverNext: this.coverNext,
-      seats: LOCAL_NAMES.map((name, s) => ({ name, bot: this.settings.bots && s !== 0, botControlled: false })), teams: [...DEFAULT_TEAM_NAMES],
+      seats: LOCAL_NAMES.map((name, s) => ({ name, bot: this.settings.bots && s !== 0, botControlled: false })), teams: [...DEFAULT_TEAM_NAMES], ghosts: [],
       canRaise: canRaise(this.game, this.seat), canCover: coverAllowed(this.game), rulesEditable: true, restart: 'newGame',
     };
   }
