@@ -1,13 +1,14 @@
 # Truco Mineiro — mesa 3D co-op
 
-Jogo de Truco Mineiro em 3D, primeira pessoa, 2v2. Por enquanto local com bots; a rede vem depois.
+Jogo de Truco Mineiro em 3D, primeira pessoa, 2v2. Salas online com amigos (por enquanto só entrar e se ver na sala) e a mesa offline contra bots.
 
 ```
 bun install
-bun run dev      # apps/web em http://localhost:5173
-bun test         # regras (packages/rules)
-bun run check    # svelte-check
-bun run build
+bun run dev      # servidor Bun em :3000 + Vite em http://localhost:5173 (com proxy de /api e /ws)
+bun test         # regras, protocolo, sala, mesa local e mesa remota
+bun run check    # svelte-check + tsc do servidor e do protocolo
+bun run build    # cliente em apps/web/dist
+bun run start    # servidor servindo o cliente buildado (PORT=3000)
 ```
 
 ## Estrutura
@@ -21,13 +22,28 @@ packages/rules   motor puro em TypeScript — sem DOM, sem three.js. Vai virar a
   src/bot.ts       decisões dos bots (só olham as próprias cartas)
   test/            bun test
 
+packages/protocol  mensagens cliente ↔ servidor (uniões discriminadas nos dois sentidos), `RoomSnapshot`,
+                   `parseClientMessage`, códigos de fechamento do WebSocket. Importado pelos dois lados.
+
+apps/server      Bun.serve: HTTP (`/health`, `POST /api/rooms`, cliente estático com fallback SPA) e WebSocket em `/ws`
+  src/room.ts      máquina de estado da sala, pura: `step(state, input, now)` → estado novo, mensagens por token,
+                   eventos para o log; timers como dado em `state.timers` (morte em 10 min, saída 20 s após cair)
+  src/host.ts      `RoomHost`: sockets por token, agenda os timers que a sala pede e nunca os seus
+  src/rooms.ts     `Rooms`: as salas vivas num mapa em memória (ADR 0004), códigos de 4 letras
+  src/server.ts    rotas e upgrade; sala inexistente fecha o socket com `CLOSE_ROOM_NOT_FOUND`
+  test/            bun test: sala (entrar, sufixo, cair, voltar, morrer) e um servidor real numa porta livre
+
 apps/web         Vite + Svelte 5 + Threlte 8 + three, HUD em dssoca
+  src/lib/route.svelte.ts   rotas: `/` início, `/sala/CODE`, `/offline`
+  src/lib/screens/          Home (abrir sala, entrar com código, offline), Room (código, link, apelido, quem está na sala), Offline (a mesa)
+  src/lib/identity.ts       token por aba (sessionStorage) e apelido lembrado (localStorage)
   src/lib/table/table.ts    interface `Table` (ADR 0003): snapshot imutável, cadeira local, ações, assinatura de eventos
   src/lib/table/local.ts    `LocalTable`: motor e bots no navegador, com ritmo dos bots e pausa entre mãos (timers injetáveis)
+  src/lib/table/remote.ts   `RemoteTable`: conecta na sala com o token, aplica snapshots, reconecta com espera crescente, pinga
   src/lib/state.svelte.ts   estado reativo: `table`, `live.snap` (espelho do snapshot) e `ui` (câmera, seleção, menu, regras)
   src/lib/controller.ts     cola entre a mesa e a interface: log, falas, câmera, prompt derivado do snapshot
   src/lib/input.ts          teclado + pointer lock — só fala com `Table`
-  test/                     bun test: `LocalTable` joga uma partida inteira contra bots sem DOM
+  test/                     bun test: `LocalTable` joga uma partida inteira contra bots sem DOM; `RemoteTable` com socket falso
   src/lib/format.ts         eventos → texto (PT-BR)
   src/lib/scene/            builders (personagens/cartas procedurais), throw (onde a carta cai), layout, gaze, World.svelte
   src/lib/hud/              Score, Seats, Keys, Log, Prompt, Menu (markup vanilla do dssoca)
@@ -52,5 +68,5 @@ apps/web         Vite + Svelte 5 + Threlte 8 + three, HUD em dssoca
 
 - `vanilla.css` do dssoca@0.17 tem `:where(:scope)a.ss-svc` que o lightningcss (Vite 8) rejeita;
   `build.cssMinify` está desligado até isso ser corrigido no dssoca.
-- Rede: `services/server` (Bun + WebSocket) rodando `@truco/rules`; clientes recebem só a própria mão.
+- Rede: a sala já existe (entrar, apelido, quem está); cadeiras, duplas e a partida online vêm nas próximas issues do spec #1.
 - Onde a carta empatada cai (ao lado × cruzada por cima) — confirmar com a mesa de Minas.

@@ -3,20 +3,16 @@ import {
   respond, responderSeat, startHand, takeEvents, teamOf,
   type CardId, type DezAction, type GameEvent, type GameState, type RespondAction, type Rng, type Rules, type Seat,
 } from '@truco/rules';
+import { realClock, type Clock } from './clock';
 import type { Table, TableListener, TableSnapshot } from './table';
 
 /** Lidas ao vivo: regras aplicam na próxima mão, bots e ritmo na próxima ação. */
 export interface LocalSettings { rules: Rules; bots: boolean; botDelay: number }
 
-/** Timers injetáveis (testes rodam sem esperar). */
-export interface Clock { setTimeout(fn: () => void, ms: number): unknown; clearTimeout(handle: unknown): void }
-
 /** Pausa entre o fim de uma mão e a seguinte, ms. */
 export const HAND_PAUSE = 2200;
 /** Bots "pensam" um pouco mais antes de responder truco ou decidir a mão de dez. */
 const DECISION_EXTRA = 300;
-
-const realClock: Clock = { setTimeout: (fn, ms) => setTimeout(fn, ms), clearTimeout: (h) => clearTimeout(h as ReturnType<typeof setTimeout>) };
 
 /**
  * A mesa offline: motor e bots no navegador. Com bots, a pessoa é a cadeira 0;

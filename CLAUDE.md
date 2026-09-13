@@ -3,8 +3,9 @@
 3D first-person 2v2 Truco Mineiro for up to eight friends in rooms, plus offline play against bots. Desktop browser only. Bun workspaces monorepo:
 
 - `packages/rules`: pure TypeScript engine and bots, `bun test`. No DOM, no three.js.
+- `packages/protocol`: message types shared by client and server, the room snapshot, and the client message parser.
 - `apps/web`: Vite + Svelte 5 + Threlte client. Talks to one table interface with a local adapter (engine in the browser) and a remote adapter (WebSocket).
-- `apps/server` (planned): Bun WebSocket server running the engine as the authority, also serving the built client. One container on the VPS at truco.passoca.dev.
+- `apps/server`: Bun HTTP + WebSocket server holding rooms as a pure state machine (timers as data), later running the engine as the authority; serves the built client. One container on the VPS at truco.passoca.dev.
 
 Domain vocabulary is in `CONTEXT.md` (Portuguese canonical terms, English code identifiers). Decisions are in `docs/adr/`. See `README.md` for the current code layout.
 

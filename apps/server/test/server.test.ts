@@ -1,0 +1,83 @@
+import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
+import { CLOSE_REPLACED, CLOSE_ROOM_NOT_FOUND, type RoomSnapshot, type ServerMessage } from '@truco/protocol';
+import { createServer } from '../src/server';
+import { silentLog } from '../src/log';
+
+/** Servidor de verdade numa porta livre; o adaptador de socket é coberto aqui só no que o deploy e o cliente dependem. */
+let app: ReturnType<typeof createServer>;
+let base: string;
+const wsUrl = (room: string, token: string) => `${base.replace('http', 'ws')}/ws?room=${room}&token=${token}`;
+
+beforeAll(() => {
+  app = createServer({ port: 0, distDir: '/nonexistent', log: silentLog });
+  base = `http://localhost:${app.server.port}`;
+});
+afterAll(() => app.stop());
+
+function nextMessage(ws: WebSocket): Promise<ServerMessage> {
+  return new Promise((res) => ws.addEventListener('message', (e) => res(JSON.parse(String(e.data))), { once: true }));
+}
+function closed(ws: WebSocket): Promise<CloseEvent> {
+  return new Promise((res) => ws.addEventListener('close', (e) => res(e as CloseEvent), { once: true }));
+}
+
+describe('servidor', () => {
+  test('/health responde', async () => {
+    const r = await fetch(`${base}/health`);
+    expect(r.status).toBe(200);
+    expect(await r.json()).toEqual({ ok: true, rooms: 0 });
+  });
+
+  test('sem cliente buildado, a raiz explica em vez de quebrar', async () => {
+    const r = await fetch(`${base}/`);
+    expect(r.status).toBe(503);
+  });
+
+  test('POST /api/rooms abre uma sala com código curto', async () => {
+    const r = await fetch(`${base}/api/rooms`, { method: 'POST' });
+    const { code } = (await r.json()) as { code: string };
+    expect(code).toMatch(/^[A-Z]{4}$/);
+    expect(app.rooms.get(code)).toBeDefined();
+  });
+
+  test('sala desconhecida fecha o socket com o código que o cliente entende', async () => {
+    const ws = new WebSocket(wsUrl('ZZZZ', 'token-desconhecido-1'));
+    const e = await closed(ws);
+    expect(e.code).toBe(CLOSE_ROOM_NOT_FOUND);
+  });
+
+  test('duas conexões na mesma sala veem os apelidos uma da outra', async () => {
+    const { code } = (await (await fetch(`${base}/api/rooms`, { method: 'POST' })).json()) as { code: string };
+    const a = new WebSocket(wsUrl(code, 'token-aaaaaaaa'));
+    const first = await nextMessage(a);
+    expect(first).toEqual({ type: 'snapshot', snapshot: { code, members: [], you: null } });
+
+    a.send(JSON.stringify({ type: 'join', nickname: 'Zé' }));
+    const joined = await nextMessage(a);
+    expect(joined.type).toBe('snapshot');
+
+    const b = new WebSocket(wsUrl(code, 'token-bbbbbbbb'));
+    await nextMessage(b);
+    const seenByA = nextMessage(a);
+    b.send(JSON.stringify({ type: 'join', nickname: 'Zé' }));
+    const snapA = (await seenByA) as { snapshot: RoomSnapshot };
+    expect(snapA.snapshot.members.map((m) => m.nickname)).toEqual(['Zé', 'Zé 2']);
+    a.close(); b.close();
+  });
+
+  test('um socket novo com o mesmo token assume o lugar do velho e recebe o snapshot na hora', async () => {
+    const { code } = (await (await fetch(`${base}/api/rooms`, { method: 'POST' })).json()) as { code: string };
+    const a1 = new WebSocket(wsUrl(code, 'token-cccccccc'));
+    await nextMessage(a1);
+    a1.send(JSON.stringify({ type: 'join', nickname: 'Zé' }));
+    await nextMessage(a1);
+
+    const a2 = new WebSocket(wsUrl(code, 'token-cccccccc'));
+    const [gone, snap] = await Promise.all([closed(a1), nextMessage(a2)]);
+    expect(gone.code).toBe(CLOSE_REPLACED);
+    expect(snap).toMatchObject({ type: 'snapshot', snapshot: { members: [{ nickname: 'Zé', connected: true }] } });
+    expect((snap as { snapshot: RoomSnapshot }).snapshot.you).toBe('m1');
+    expect(app.rooms.get(code)!.connections).toBe(1);
+    a2.close();
+  });
+});

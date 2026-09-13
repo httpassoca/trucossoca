@@ -40,3 +40,19 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: var(--ss-bg)
 .tm-crosshair { position: absolute; left: 50%; top: 50%; width: 6px; height: 6px; margin: -3px 0 0 -3px; border: 1px solid var(--ss-accent); opacity: 0.6; pointer-events: none; }
 
 @media (max-width: 900px) { .tm-log { display: none; } .tm-menu .body { grid-template-columns: 1fr; } }
+
+/* telas fora da mesa: início e sala */
+.tm-screen { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; padding: 16px; font-family: var(--ss-font-body); color: var(--ss-fg); }
+.tm-panel { width: min(460px, 100%); max-height: 94vh; overflow: auto; }
+.tm-panel .body { display: flex; flex-direction: column; gap: 16px; }
+.tm-panel .foot { justify-content: flex-end; }
+.tm-form { display: flex; gap: 8px; align-items: flex-end; }
+.tm-form .ss-field { flex: 1; }
+.tm-code-input { font-family: var(--ss-font-mono); text-transform: uppercase; letter-spacing: 0.2em; }
+.tm-share { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.tm-code { font-family: var(--ss-font-mono); font-size: var(--ss-size-h2); letter-spacing: 0.25em; }
+.tm-members { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 6px; }
+.tm-members li { display: flex; align-items: center; gap: 8px; }
+.tm-members li.off > span:first-child { color: var(--ss-fg-faint); text-decoration: line-through; }
+.tm-warn { color: var(--ss-yellow); }
+.tm-error { margin: 0; color: var(--ss-red); font-size: var(--ss-ui-sm); }

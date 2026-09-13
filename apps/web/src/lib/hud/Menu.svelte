@@ -2,6 +2,7 @@
   import type { Rules } from '@truco/rules';
   import { newGame } from '../controller';
   import { resume } from '../input';
+  import { navigate } from '../route.svelte';
   import { ui } from '../state.svelte';
   import Kbd from './Kbd.svelte';
 
@@ -94,6 +95,7 @@
         </div>
       </div>
       <div class="foot">
+        <button class="ss-btn ghost" type="button" onclick={() => navigate('/')}>Início</button>
         <button class="ss-btn ghost" type="button" onclick={() => { newGame(); resume(); }}>Nova partida</button>
         <button class="ss-btn primary" type="button" onclick={resume}>Jogar <Kbd keys={['↵']} /></button>
       </div>

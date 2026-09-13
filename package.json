@@ -3,9 +3,10 @@
   "private": true,
   "workspaces": ["packages/*", "apps/*"],
   "scripts": {
-    "dev": "bun run --filter @truco/web dev",
+    "dev": "bun run --filter @truco/web --filter @truco/server dev",
     "build": "bun run --filter @truco/web build",
-    "check": "bun run --filter @truco/web check",
+    "start": "bun apps/server/src/index.ts",
+    "check": "bun run --filter @truco/web --filter @truco/server --filter @truco/protocol check",
     "test": "bun test",
     "preview": "bun run --filter @truco/web preview"
   },

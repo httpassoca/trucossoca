@@ -1,19 +1,14 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
-  import { newGame, onTableChange } from './lib/controller';
-  import Hud from './lib/hud/Hud.svelte';
-  import { onKey } from './lib/input';
-  import Scene from './lib/scene/Scene.svelte';
-  import { table } from './lib/state.svelte';
-
-  onMount(() => {
-    const off = table.subscribe(onTableChange);
-    newGame();
-    return off;
-  });
+  import { route } from './lib/route.svelte';
+  import Home from './lib/screens/Home.svelte';
+  import Offline from './lib/screens/Offline.svelte';
+  import Room from './lib/screens/Room.svelte';
 </script>
 
-<svelte:window onkeydown={onKey} />
-
-<Scene />
-<Hud />
+{#if route.current.name === 'room'}
+  {#key route.current.code}<Room code={route.current.code} />{/key}
+{:else if route.current.name === 'offline'}
+  <Offline />
+{:else}
+  <Home />
+{/if}

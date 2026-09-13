@@ -8,11 +8,23 @@
         "bun-types": "^1.4.2",
       },
     },
+    "apps/server": {
+      "name": "@truco/server",
+      "version": "0.1.0",
+      "dependencies": {
+        "@truco/protocol": "workspace:*",
+        "@truco/rules": "workspace:*",
+      },
+      "devDependencies": {
+        "typescript": "^5.9.0",
+      },
+    },
     "apps/web": {
       "name": "@truco/web",
       "version": "0.1.0",
       "dependencies": {
         "@threlte/core": "^8.6.0",
+        "@truco/protocol": "workspace:*",
         "@truco/rules": "workspace:*",
         "dssoca": "^0.17.0",
         "svelte": "^5.57.0",
@@ -25,6 +37,13 @@
         "svelte-check": "^4.3.0",
         "typescript": "^5.9.0",
         "vite": "^8.3.0",
+      },
+    },
+    "packages/protocol": {
+      "name": "@truco/protocol",
+      "version": "0.1.0",
+      "devDependencies": {
+        "typescript": "^5.9.0",
       },
     },
     "packages/rules": {
@@ -87,7 +106,11 @@
 
     "@threlte/core": ["@threlte/core@8.6.0", "", { "peerDependencies": { "svelte": ">=5", "three": ">=0.160" } }, "sha512-WzXjUAy6FW4T2M6cXgrP4WP0UlagU2C20t3h/0QJmCGALgWMct/yAG2xR8FIH3UAi4MGWQ5HkpQ8eQrp0NEHSg=="],
 
+    "@truco/protocol": ["@truco/protocol@workspace:packages/protocol"],
+
     "@truco/rules": ["@truco/rules@workspace:packages/rules"],
+
+    "@truco/server": ["@truco/server@workspace:apps/server"],
 
     "@truco/web": ["@truco/web@workspace:apps/web"],
 

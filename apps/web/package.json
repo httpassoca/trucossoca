@@ -11,6 +11,7 @@
   },
   "dependencies": {
     "@threlte/core": "^8.6.0",
+    "@truco/protocol": "workspace:*",
     "@truco/rules": "workspace:*",
     "dssoca": "^0.17.0",
     "svelte": "^5.57.0",
