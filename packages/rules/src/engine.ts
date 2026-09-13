@@ -11,7 +11,7 @@ export const defaultRules: Rules = {
   raiseOnlyOnTurn: true,
   alternateRaises: true,
   allowCovered: true,
-  coverFromRound: 2,
+  coverFromTrick: 2,
   maoDeDezValue: 4,
   maoDeDezPeek: true,
   maoDeFerroBlind: true,
@@ -41,10 +41,10 @@ export function startHand(g: GameState, rng: Rng, opts: { deck?: CardId[]; rules
   const R = g.rules;
   g.mao = nextSeat(g.mao); g.handNo++;
   const deck = opts.deck ? [...opts.deck] : shuffle(makeDeck(), rng);
-  const hands: CardId[][] = [[], [], [], []];
-  for (let i = 0; i < 3; i++) for (let s = 0; s < 4; s++) hands[s].push(deck.pop()!);
+  const cards: CardId[][] = [[], [], [], []];
+  for (let i = 0; i < 3; i++) for (let s = 0; s < 4; s++) cards[s].push(deck.pop()!);
   const h: HandState = {
-    hands, stock: deck, played: [[]], results: [], order: 0,
+    cards, stock: deck, played: [[]], results: [], order: 0,
     value: R.ladder[0], ladderIdx: 0, pending: null, lastRaiseTeam: null,
     turn: g.mao, leader: g.mao, special: 'normal', phase: 'play', decider: null, revealPartner: false,
   };
@@ -118,7 +118,7 @@ export function decideDez(g: GameState, action: DezAction): boolean {
 
 export function coverAllowed(g: GameState): boolean {
   const h = g.hand; if (!h) return false;
-  return g.rules.allowCovered && h.special !== 'ferro' && h.played.length >= g.rules.coverFromRound;
+  return g.rules.allowCovered && h.special !== 'ferro' && h.played.length >= g.rules.coverFromTrick;
 }
 
 export function currentBest(g: GameState): { best: number; play: Play | null } {
@@ -133,21 +133,21 @@ export function currentBest(g: GameState): { best: number; play: Play | null } {
 
 export function playCard(g: GameState, seat: Seat, id: CardId, covered = false): boolean {
   const h = g.hand; if (!h || h.phase !== 'play' || h.turn !== seat) return false;
-  const hand = h.hands[seat]; const i = hand.indexOf(id); if (i < 0) return false;
+  const cards = h.cards[seat]; const i = cards.indexOf(id); if (i < 0) return false;
   if (covered && !coverAllowed(g)) covered = false;
   const plays = h.played[h.played.length - 1];
   const { best } = currentBest(g);
   const st = covered ? -1 : strength(id, g.rules);
   const kind: PlayKind = covered ? 'cover' : plays.length === 0 ? 'lead' : st > best ? 'kill' : st === best ? 'tie' : 'lose';
-  hand.splice(i, 1);
+  cards.splice(i, 1);
   plays.push({ seat, id, covered, kind, order: h.order++ });
   g.events.push({ type: 'play', seat, id, covered, kind });
   h.turn = nextSeat(seat);
-  if (plays.length === 4) resolveRound(g);
+  if (plays.length === 4) resolveTrick(g);
   return true;
 }
 
-function resolveRound(g: GameState) {
+function resolveTrick(g: GameState) {
   const h = g.hand!, R = g.rules, plays = h.played[h.played.length - 1];
   let best = -1, bestSeats: Seat[] = [];
   for (const p of plays) {
@@ -157,7 +157,7 @@ function resolveRound(g: GameState) {
   const teams = new Set(bestSeats.map(teamOf));
   const winner: Team | null = teams.size === 1 ? [...teams][0] : null;
   h.results.push(winner);
-  g.events.push({ type: 'round', n: h.results.length, winner, bestSeat: winner === null ? null : bestSeats[0] });
+  g.events.push({ type: 'trick', n: h.results.length, winner, bestSeat: winner === null ? null : bestSeats[0] });
   let hw = handWinner(h.results);
   if (hw === null && !R.allTieNobody) hw = teamOf(g.mao);
   if (hw !== undefined) { endHand(g, hw, h.value); return; }

@@ -23,7 +23,7 @@
     { key: 'allowCovered', label: 'Carta coberta permitida' },
     { key: 'maoDeDezPeek', label: 'Mão de dez: olhar carta do parceiro' },
     { key: 'maoDeFerroBlind', label: 'Mão de ferro às cegas' },
-    { key: 'allTieNobody', label: 'Empate nas 3 rodadas: ninguém pontua' },
+    { key: 'allTieNobody', label: 'Empate nas 3 vazas: ninguém pontua' },
   ];
   const shortcuts = [
     { group: 'na mesa', rows: [
@@ -64,7 +64,7 @@
                   <label class="ss-switch"><button type="button" role="switch" class="track" aria-label={s.label} class:on={ui.rules[s.key]} aria-checked={ui.rules[s.key]} onclick={() => (ui.rules[s.key] = !ui.rules[s.key])}><span class="thumb"></span></button></label>
                 </div>
               {/each}
-              <div class="tm-line"><span>Cobrir a partir da rodada</span>{@render seg(ui.rules.coverFromRound, [[1, '1ª'], [2, '2ª']], (v) => (ui.rules.coverFromRound = v))}</div>
+              <div class="tm-line"><span>Cobrir a partir da vaza</span>{@render seg(ui.rules.coverFromTrick, [[1, '1ª'], [2, '2ª']], (v) => (ui.rules.coverFromTrick = v))}</div>
               <div class="tm-line"><span>Após empate, quem sai</span>{@render seg(ui.rules.tieLeader, [['mao', 'o mão'], ['leader', 'quem saiu']], (v) => (ui.rules.tieLeader = v))}</div>
               <div class="tm-line">
                 <span>Bots jogam as outras cadeiras</span>

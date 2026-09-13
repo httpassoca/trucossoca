@@ -6,15 +6,15 @@ import {
 
 const R = defaultRules;
 const rng = () => 0.5;
-/** baralho onde os últimos 12 são as mãos (deal faz pop): seat s recebe deck[-1-s], deck[-5-s], deck[-9-s] */
-function deckFor(hands: CardId[][]): CardId[] {
+/** baralho onde os últimos 12 são as cartas de cada cadeira (deal faz pop): seat s recebe deck[-1-s], deck[-5-s], deck[-9-s] */
+function deckFor(cards: CardId[][]): CardId[] {
   const dealt: CardId[] = [];
-  for (let i = 0; i < 3; i++) for (let s = 0; s < 4; s++) dealt.push(hands[s][i]);
+  for (let i = 0; i < 3; i++) for (let s = 0; s < 4; s++) dealt.push(cards[s][i]);
   return [...dealt].reverse();
 }
-function game(hands: CardId[][], rules: Partial<Rules> = {}, scores: [number, number] = [0, 0]) {
+function game(cards: CardId[][], rules: Partial<Rules> = {}, scores: [number, number] = [0, 0]) {
   const g = createGame({ ...R, ...rules }); g.scores = scores;
-  startHand(g, rng, { deck: deckFor(hands) }); // mão = seat 0
+  startHand(g, rng, { deck: deckFor(cards) }); // mão = seat 0
   return g;
 }
 
@@ -30,7 +30,7 @@ describe('força das cartas', () => {
 
 describe('quem ganha a mão', () => {
   const t = (r: (Team | null)[], want: Team | null | undefined) => expect(handWinner(r)).toBe(want);
-  test('duas rodadas seguidas', () => { t([0, 0], 0); t([1, 1], 1); });
+  test('duas vazas seguidas', () => { t([0, 0], 0); t([1, 1], 1); });
   test('1ª empata → 2ª decide', () => { t([null], undefined); t([null, 1], 1); t([null, null], undefined); t([null, null, 0], 0); });
   test('2ª ou 3ª empata → quem fez a 1ª', () => { t([0, null], 0); t([0, 1, null], 0); t([0, 1], undefined); t([0, 1, 1], 1); });
   test('tudo empatado → ninguém', () => { t([null, null, null], null); });
@@ -39,7 +39,7 @@ describe('quem ganha a mão', () => {
 describe('jogo', () => {
   test('deal: 3 cartas por cadeira, 28 no monte, mão joga primeiro', () => {
     const g = createGame(); startHand(g, Math.random);
-    expect(g.hand!.hands.every((h) => h.length === 3)).toBe(true);
+    expect(g.hand!.cards.every((c) => c.length === 3)).toBe(true);
     expect(g.hand!.stock.length).toBe(28);
     expect(g.hand!.turn).toBe(0);
   });
@@ -60,7 +60,7 @@ describe('jogo', () => {
     expect(playCard(g, 0, 'Kc')).toBe(false);
   });
 
-  test('carta coberta só a partir da 2ª rodada e vale nada', () => {
+  test('carta coberta só a partir da 2ª vaza e vale nada', () => {
     const g = game([['3c', '4d', '4h'], ['Kc', '4s', '5d'], ['Ks', '5h', '5s'], ['2c', '6c', '6d']]);
     playCard(g, 0, '3c', true);
     expect(g.hand!.played[0][0].covered).toBe(false);
@@ -110,6 +110,21 @@ describe('jogo', () => {
     expect(g.hand!.turn).toBe(0);            // o zap saiu de novo
     playCard(g, 0, '7h'); playCard(g, 1, '4s'); playCard(g, 2, '5h'); playCard(g, 3, '6c');
     expect(g.over).toBe(true);
+  });
+
+  test('coverFromTrick: 1 permite cobrir já na 1ª vaza', () => {
+    const g = game([['3c', '4d', '4h'], ['Kc', '4s', '5d'], ['Ks', '5h', '5s'], ['2c', '6c', '6d']], { coverFromTrick: 1 });
+    playCard(g, 0, '3c', true);
+    expect(g.hand!.played[0][0].covered).toBe(true);
+    expect(g.hand!.played[0][0].kind).toBe('cover');
+  });
+
+  test('fim da vaza emite o evento trick com número, dupla vencedora e cadeira', () => {
+    const g = game([['5c', '4d', '4h'], ['Kc', '4s', '5d'], ['Ks', '5h', '5s'], ['2c', '6c', '6d']]);
+    playCard(g, 0, '5c'); playCard(g, 1, 'Kc'); playCard(g, 2, 'Ks'); playCard(g, 3, '2c');
+    const ev = takeEvents(g);
+    expect(ev.map((e) => e.type)).toEqual(['newHand', 'play', 'play', 'play', 'play', 'trick']);
+    expect(ev[5]).toEqual({ type: 'trick', n: 1, winner: 1, bestSeat: 3 });
   });
 
   test('eventos saem na fila e são drenados', () => {

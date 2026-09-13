@@ -43,7 +43,7 @@ export function setView(s: Seat) { ui.view = s; ui.sel = 0; bus.resetLook(); ui.
 
 export function doPlay(seat: Seat, id: CardId, covered: boolean) {
   if (!playCard(game, seat, id, covered)) return;
-  if (seat === ui.view) { ui.sel = Math.max(0, Math.min(ui.sel, game.hand!.hands[seat].length - 1)); ui.coverNext = false; }
+  if (seat === ui.view) { ui.sel = Math.max(0, Math.min(ui.sel, game.hand!.cards[seat].length - 1)); ui.coverNext = false; }
   afterAction();
 }
 export function doRaise(seat: Seat) { if (raise(game, seat)) afterAction(); }

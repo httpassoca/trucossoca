@@ -13,7 +13,7 @@ export interface Rules {
   raiseOnlyOnTurn: boolean;
   alternateRaises: boolean;
   allowCovered: boolean;
-  coverFromRound: number;
+  coverFromTrick: number;
   maoDeDezValue: number;
   maoDeDezPeek: boolean;
   maoDeFerroBlind: boolean;
@@ -46,7 +46,8 @@ export type Phase = 'play' | 'respond' | 'dezDecision' | 'over';
 export type Special = 'normal' | 'dez' | 'ferro';
 
 export interface HandState {
-  hands: CardId[][];
+  /** cartas que cada cadeira segura */
+  cards: CardId[][];
   stock: CardId[];
   played: Play[][];
   results: (Team | null)[];
@@ -72,7 +73,7 @@ export type GameEvent =
   | { type: 'raise'; seat: Seat; to: number }
   | { type: 'respond'; seat: Seat; action: 'accept' | 'decline'; value: number; winnerTeam?: Team }
   | { type: 'dez'; team: Team; action: DezAction }
-  | { type: 'round'; n: number; winner: Team | null; bestSeat: Seat | null }
+  | { type: 'trick'; n: number; winner: Team | null; bestSeat: Seat | null }
   | { type: 'handEnd'; winner: Team | null; points: number; scores: [number, number] }
   | { type: 'gameOver'; winner: Team };
 

@@ -50,13 +50,13 @@ export function onKey(e: KeyboardEvent) {
     else if (e.key === 'r' || e.key === 'R') promptAct('raise');
     return;
   }
-  const hand = h.hands[ui.view];
+  const cards = h.cards[ui.view];
   const myTurn = h.phase === 'play' && humanControls(ui.view) && h.turn === ui.view;
   if (e.key === 'ArrowLeft') { ui.sel = Math.max(0, ui.sel - 1); return; }
-  if (e.key === 'ArrowRight') { ui.sel = Math.min(hand.length - 1, ui.sel + 1); return; }
+  if (e.key === 'ArrowRight') { ui.sel = Math.min(cards.length - 1, ui.sel + 1); return; }
   if (e.key === 'c' || e.key === 'C') { ui.coverNext = !ui.coverNext && coverAllowed(game); return; }
   if (e.key === 't' || e.key === 'T') { if (canHumanRaise()) doRaise(ui.view); return; }
   if (!myTurn) return;
-  if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); if (hand[ui.sel]) doPlay(ui.view, hand[ui.sel], ui.coverNext); return; }
-  const n = parseInt(e.key); if (n >= 1 && n <= 3 && hand[n - 1]) doPlay(ui.view, hand[n - 1], ui.coverNext);
+  if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); if (cards[ui.sel]) doPlay(ui.view, cards[ui.sel], ui.coverNext); return; }
+  const n = parseInt(e.key); if (n >= 1 && n <= 3 && cards[n - 1]) doPlay(ui.view, cards[n - 1], ui.coverNext);
 }

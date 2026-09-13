@@ -4,7 +4,7 @@
   import { callName } from '../format';
 
   const h = $derived(game.hand);
-  const meta = $derived(h ? `mão vale ${h.value} · rodada ${Math.min(h.played.length, 3)} · mão de ${NAMES[game.mao].toLowerCase()}` : '');
+  const meta = $derived(h ? `mão vale ${h.value} · vaza ${Math.min(h.played.length, 3)} · mão de ${NAMES[game.mao].toLowerCase()}` : '');
   const turn = $derived.by(() => {
     if (!h) return '';
     if (game.over) return 'Fim de jogo.';

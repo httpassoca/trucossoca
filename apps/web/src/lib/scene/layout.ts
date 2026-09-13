@@ -10,13 +10,13 @@ const _q = new THREE.Quaternion(), _e = new THREE.Euler(), Y = new THREE.Vector3
 const spots = new Map<string, Spot>();
 let spotsHandKey = '';
 
-function spotFor(g: GameState, p: Play, round: Play[]): Spot {
+function spotFor(g: GameState, p: Play, trick: Play[]): Spot {
   const key = `${g.handNo}:${p.id}`;
   let s = spots.get(key);
   if (!s) {
     // referência: a melhor carta que já estava na mesa antes desta
     let best = -1, ref: Spot | null = null;
-    for (const q of round) {
+    for (const q of trick) {
       if (q.order >= p.order) continue;
       const st = q.covered ? -1 : strength(q.id, g.rules);
       if (st > best) { best = st; ref = spots.get(`${g.handNo}:${q.id}`) ?? null; }
@@ -41,10 +41,10 @@ export function layoutCards(g: GameState, ui: LayoutUi, cards: Record<CardId, Ca
   const blind = h.special === 'ferro' && g.rules.maoDeFerroBlind && h.phase !== 'over';
   const myTurn = h.phase === 'play' && humanControls(ui.view) && h.turn === ui.view;
   for (let s = 0 as Seat; s < 4; s = (s + 1) as Seat) {
-    const hand = h.hands[s];
+    const held = h.cards[s];
     const peek = h.revealPartner && teamOf(s) === h.decider && s === (ui.view + 2) % 4;
-    hand.forEach((id, i) => {
-      const lx = (i - (hand.length - 1) / 2) * 0.21;
+    held.forEach((id, i) => {
+      const lx = (i - (held.length - 1) / 2) * 0.21;
       const lift = s === ui.view && myTurn && i === ui.sel ? 0.045 : 0;
       cards[id].userData.tb = 1;
       if (blind) setTarget(cards[id], s, 0.8, lx, TABLE_TOP + 0.11 + lift, -lift * 0.6, Math.PI / 3, 0);
@@ -52,11 +52,11 @@ export function layoutCards(g: GameState, ui: LayoutUi, cards: Record<CardId, Ca
     });
   }
   const last = h.played.length - 1;
-  h.played.forEach((round, r) => round.forEach((p) => {
-    const card = cards[p.id]; const sp = spotFor(g, p, round);
+  h.played.forEach((trick, t) => trick.forEach((p) => {
+    const card = cards[p.id]; const sp = spotFor(g, p, trick);
     card.userData.tp.set(sp.x, TABLE_TOP + 0.002 + p.order * 0.0022, sp.z);
     card.userData.tq.setFromAxisAngle(Y, sp.yaw).multiply(_q.setFromEuler(_e.set(p.covered ? Math.PI / 2 : -Math.PI / 2, 0, 0, 'YXZ')));
-    card.userData.tb = r === last ? 1 : 0.5;
+    card.userData.tb = t === last ? 1 : 0.5;
   }));
   h.stock.forEach((id, i) => {
     const card = cards[id]; card.userData.tb = 1;

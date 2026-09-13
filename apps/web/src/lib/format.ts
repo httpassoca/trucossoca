@@ -5,7 +5,7 @@ export const callName = (v: number) => ({ 4: 'TRUCO!', 6: 'SEIS!', 10: 'DEZ!', 1
 
 export function formatEvent(e: GameEvent, g: GameState): LogLine | null {
   const h = g.hand;
-  const tag = `m${g.handNo}·r${h ? Math.min(h.played.length, 3) : 1}`;
+  const tag = `m${g.handNo}·v${h ? Math.min(h.played.length, 3) : 1}`;
   const line = (text: string): LogLine => ({ tag, text });
   switch (e.type) {
     case 'newHand':
@@ -22,7 +22,7 @@ export function formatEvent(e: GameEvent, g: GameState): LogLine | null {
         ? line(`${NAMES[e.seat]} aceitou. Mão vale ${e.value}.`)
         : line(`${NAMES[e.seat]} correu. ${TEAMS[e.winnerTeam!]} leva ${e.value}.`);
     case 'dez': return line(e.action === 'play' ? `${TEAMS[e.team]} joga a mão de dez.` : `${TEAMS[e.team]} correu da mão de dez.`);
-    case 'round': return line(e.winner === null ? `Rodada ${e.n} empatou.` : `Rodada ${e.n}: ${TEAMS[e.winner]} (${NAMES[e.bestSeat!]}).`);
+    case 'trick': return line(e.winner === null ? `Vaza ${e.n} empatou.` : `Vaza ${e.n}: ${TEAMS[e.winner]} (${NAMES[e.bestSeat!]}).`);
     case 'handEnd': return line(e.winner === null ? 'Ninguém pontua nesta mão.' : `${TEAMS[e.winner]} faz ${e.points}. ${e.scores[0]} × ${e.scores[1]}.`);
     case 'gameOver': return line(e.winner === 0 ? 'Nós vencemos!' : 'Eles venceram.');
   }
