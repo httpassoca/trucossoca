@@ -70,3 +70,5 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: var(--ss-bg)
 .tm-seats .tm-bot { color: var(--ss-fg-faint); font-size: var(--ss-ui-xs); margin-left: 2px; }
 .tm-toast { position: fixed; top: 12px; left: 50%; transform: translateX(-50%); background: var(--ss-bg-elev); border: 1px solid var(--ss-line); padding: 6px 12px; font-family: var(--ss-font-body); font-size: var(--ss-ui-sm); z-index: 2; }
 @media (max-width: 640px) { .tm-teams { grid-template-columns: 1fr; } }
+.tm-log-hint { display: block; color: var(--ss-fg-faint); font-size: var(--ss-ui-xs); font-style: italic; }
+.tm-lang .ss-segmented { font-size: var(--ss-ui-xs); }

@@ -1,8 +1,8 @@
 import { defaultRules, type Rules, type Seat } from '@truco/rules';
+import type { LogLine } from './format';
 import { emptySnapshot, type Table, type TableSnapshot } from './table/table';
 
 export type Prompt = { kind: 'respond' } | { kind: 'dez' } | { kind: 'over' } | null;
-export interface LogLine { tag: string; text: string }
 
 /** Estado de interface (o que não é regra do jogo). */
 export const ui = $state({

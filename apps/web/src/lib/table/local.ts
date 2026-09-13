@@ -7,8 +7,11 @@ import { DEFAULT_TEAM_NAMES } from '@truco/protocol';
 import { realClock, type Clock } from './clock';
 import { actingFor, type Table, type TableListener, type TableSnapshot } from './table';
 
-/** Lidas ao vivo: regras aplicam na próxima mão, bots e ritmo na próxima ação. */
-export interface LocalSettings { rules: Rules; bots: boolean; botDelay: number }
+/**
+ * Lidas ao vivo: regras aplicam na próxima mão, bots e ritmo na próxima ação; `you` (o nome da cadeira 0) e `teams` (os nomes
+ * das duplas), na língua da pessoa, no próximo snapshot. Sem eles, os nomes em português.
+ */
+export interface LocalSettings { rules: Rules; bots: boolean; botDelay: number; you?: string; teams?: [string, string] }
 
 /** Quem senta na mesa offline: a pessoa na cadeira 0 e três bots. */
 export const LOCAL_NAMES = ['Você', 'Tião', 'Dita', 'Zé'] as const;
@@ -95,7 +98,7 @@ export class LocalTable implements Table {
   private takeSnapshot(): TableSnapshot {
     return {
       game: viewFor(this.game, 'all'), seat: this.seat, acting: this.acting(), coverNext: this.coverNext,
-      seats: LOCAL_NAMES.map((name, s) => ({ name, bot: this.settings.bots && s !== 0, botControlled: false })), teams: [...DEFAULT_TEAM_NAMES], ghosts: [],
+      seats: LOCAL_NAMES.map((name, s) => ({ name: s === 0 ? this.settings.you ?? name : name, bot: this.settings.bots && s !== 0, botControlled: false })), teams: this.settings.teams ?? [...DEFAULT_TEAM_NAMES], ghosts: [],
       canRaise: canRaise(this.game, this.seat), canCover: coverAllowed(this.game), rulesEditable: true, restart: 'newGame',
     };
   }

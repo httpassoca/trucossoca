@@ -1,6 +1,7 @@
 <script lang="ts">
   import { promptAct, promptOf } from '../controller';
   import { callName } from '../format';
+  import { t } from '../i18n.svelte';
   import { live } from '../state.svelte';
   import Kbd from './Kbd.svelte';
 
@@ -16,23 +17,23 @@
     <div class="body">
       {#if p.kind === 'respond' && q}
         <h3 class="tm-title">{snap.seats[q.by].name}: {callName(q.to)}</h3>
-        <p class="tm-text">A mão passa a valer {q.to}. Correr entrega {q.from}.</p>
+        <p class="tm-text">{t('prompt.respondText', { to: q.to, from: q.from })}</p>
         <div class="tm-row">
-          <button class="ss-btn primary" type="button" onclick={() => promptAct('accept')}>Aceitar <Kbd keys={['↵']} /></button>
-          <button class="ss-btn" type="button" onclick={() => promptAct('decline')}>Correr <Kbd keys={['X']} /></button>
-          {#if more}<button class="ss-btn danger" type="button" onclick={() => promptAct('raise')}>Pedir {more} <Kbd keys={['R']} /></button>{/if}
+          <button class="ss-btn primary" type="button" onclick={() => promptAct('accept')}>{t('prompt.accept')} <Kbd keys={['↵']} /></button>
+          <button class="ss-btn" type="button" onclick={() => promptAct('decline')}>{t('prompt.decline')} <Kbd keys={['X']} /></button>
+          {#if more}<button class="ss-btn danger" type="button" onclick={() => promptAct('raise')}>{t('prompt.raise', { call: more })} <Kbd keys={['R']} /></button>{/if}
         </div>
       {:else if p.kind === 'dez'}
-        <h3 class="tm-title">Mão de dez</h3>
-        <p class="tm-text">{game.rules.maoDeDezPeek ? 'As cartas do parceiro estão viradas para você. ' : ''}Jogar vale {game.hand?.value}; correr entrega 2.</p>
+        <h3 class="tm-title">{t('prompt.dezTitle')}</h3>
+        <p class="tm-text">{game.rules.maoDeDezPeek ? t('prompt.dezPeek') : ''}{t('prompt.dezText', { value: game.hand!.value })}</p>
         <div class="tm-row">
-          <button class="ss-btn primary" type="button" onclick={() => promptAct('play')}>Jogar <Kbd keys={['↵']} /></button>
-          <button class="ss-btn" type="button" onclick={() => promptAct('run')}>Correr <Kbd keys={['X']} /></button>
+          <button class="ss-btn primary" type="button" onclick={() => promptAct('play')}>{t('prompt.play')} <Kbd keys={['↵']} /></button>
+          <button class="ss-btn" type="button" onclick={() => promptAct('run')}>{t('prompt.decline')} <Kbd keys={['X']} /></button>
         </div>
       {:else if p.kind === 'over'}
-        <h3 class="tm-title">Fim de jogo: {snap.teams[game.winner!]}</h3>
+        <h3 class="tm-title">{t('prompt.over', { team: snap.teams[game.winner!] })}</h3>
         <p class="tm-text">{game.scores[0]} × {game.scores[1]}</p>
-        {#if snap.restart}<div class="tm-row"><button class="ss-btn primary" type="button" onclick={() => promptAct('new')}>{snap.restart === 'newGame' ? 'Nova partida' : 'Revanche: voltar para a sala'} <Kbd keys={['↵']} /></button></div>{/if}
+        {#if snap.restart}<div class="tm-row"><button class="ss-btn primary" type="button" onclick={() => promptAct('new')}>{snap.restart === 'newGame' ? t('menu.newGame') : t('prompt.rematch')} <Kbd keys={['↵']} /></button></div>{/if}
       {/if}
     </div>
   </div>

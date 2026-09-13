@@ -98,6 +98,14 @@ _Evitar_: substituição, expulsão, kick, bot temporário
 No fim de jogo, qualquer pessoa sentada pede revanche e a sala inteira volta ao lobby com as mesmas cadeiras, os mesmos nomes de dupla e as mesmas regras; os bots saem e voltam ao começar.
 _Evitar_: nova partida (é o botão da mesa offline), restart, replay
 
+**Idioma** (`lang`):
+A língua da interface, escolhida por navegador e lembrada entre visitas. Português é o padrão; inglês é a outra. Toda frase que a pessoa lê passa por uma tabela só. As **chamadas** ("Truco!", "Seis!", "Dez!", "Doze!", "Corro!") e os nomes das mãos especiais ficam em português nas duas línguas.
+_Evitar_: locale, tradução (é o mecanismo, não a escolha)
+
+**Dica** (`hint`):
+A explicação curta em inglês de uma chamada ou mão especial, dada no log na primeira vez que ela aparece para quem lê em inglês, e nunca mais nesse navegador.
+_Evitar_: tooltip, glossário, tutorial
+
 **Variante** (`variant`):
 Um conjunto nomeado de regras. Hoje só existe Truco Mineiro, com as regras individuais ajustáveis na sala.
 _Evitar_: modo, preset

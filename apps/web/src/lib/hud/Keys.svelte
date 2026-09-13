@@ -1,6 +1,7 @@
 <script lang="ts">
   import { mayRaise, myTurn } from '../controller';
   import { callName } from '../format';
+  import { t } from '../i18n.svelte';
   import { live, ui } from '../state.svelte';
   import Kbd from './Kbd.svelte';
 
@@ -12,19 +13,19 @@
 </script>
 
 <div class="tm-keys">
-  {#if !ui.locked && !ui.menuOpen}<span class="tm-k on"><Kbd keys={['clique']} /><span>na mesa para olhar com o mouse</span></span>{/if}
+  {#if !ui.locked && !ui.menuOpen}<span class="tm-k on"><Kbd keys={[t('kbd.click')]} /><span>{t('hud.clickToLook')}</span></span>{/if}
   {#if snap.seat === null}
-    <span class="tm-k hot"><Kbd keys={['W', 'A', 'S', 'D']} /><span>andar</span></span>
-    <span class="tm-k"><Kbd keys={['Tab']} /><span>atrás da próxima cadeira</span></span>
+    <span class="tm-k hot"><Kbd keys={['W', 'A', 'S', 'D']} /><span>{t('hud.walk')}</span></span>
+    <span class="tm-k"><Kbd keys={['Tab']} /><span>{t('hud.nextSeat')}</span></span>
   {:else if mine}
-    <span class="tm-k hot"><Kbd keys={['←', '→']} /><span>escolher</span></span>
-    <span class="tm-k hot"><Kbd keys={['↵']} /><span>jogar</span></span>
-    <span class="tm-k"><Kbd keys={['1', '2', '3']} /><span>direto</span></span>
+    <span class="tm-k hot"><Kbd keys={['←', '→']} /><span>{t('hud.pick')}</span></span>
+    <span class="tm-k hot"><Kbd keys={['↵']} /><span>{t('hud.play')}</span></span>
+    <span class="tm-k"><Kbd keys={['1', '2', '3']} /><span>{t('hud.direct')}</span></span>
     {#if raisable}<span class="tm-k hot"><Kbd keys={['T']} /><span>{raiseLabel}</span></span>{/if}
-    {#if snap.canCover}<span class="tm-k" class:on={snap.coverNext}><Kbd keys={['C']} /><span>coberta: {snap.coverNext ? 'sim' : 'não'}</span></span>{/if}
+    {#if snap.canCover}<span class="tm-k" class:on={snap.coverNext}><Kbd keys={['C']} /><span>{t('hud.cover', { on: snap.coverNext ? t('yes') : t('no') })}</span></span>{/if}
   {:else if raisable}
-    <span class="tm-k"><Kbd keys={['T']} /><span>trucar</span></span>
+    <span class="tm-k"><Kbd keys={['T']} /><span>{t('hud.raise')}</span></span>
   {/if}
-  {#if snap.seat !== null}<span class="tm-k"><Kbd keys={['Tab']} /><span>cadeira</span></span>{/if}
-  <span class="tm-k"><Kbd keys={['Esc']} /><span>menu</span></span>
+  {#if snap.seat !== null}<span class="tm-k"><Kbd keys={['Tab']} /><span>{t('hud.seat')}</span></span>{/if}
+  <span class="tm-k"><Kbd keys={['Esc']} /><span>{t('hud.menu')}</span></span>
 </div>

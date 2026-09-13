@@ -71,6 +71,10 @@ apps/web         Vite + Svelte 5 + Threlte 8 + three, HUD em dssoca
                             botão de passar a cadeira de quem está parada há 1 min); Table (cena + HUD atrás de qualquer `Table`,
                             com a seção extra do menu como snippet); Offline (mesa local)
   src/lib/identity.ts       token por aba (sessionStorage) e apelido lembrado (localStorage)
+  src/lib/i18n.ts           a tabela de tradução (pt padrão, en), `translate`, e as dicas em inglês: as chamadas da mesa e as mãos
+                            especiais ficam em português nas duas línguas, e `HintBook` dá a dica de cada uma só na primeira vez
+                            (lembrado no navegador). Módulo puro, testado. `i18n.svelte.ts` põe a língua num `$state` (`t`, `setLang`,
+                            lembrada em localStorage, `<html lang>` acompanha); `hud/LangSwitch` é a troca, no início, na sala e no menu
   src/lib/table/table.ts    interface `Table` (ADR 0003): snapshot imutável (`GameView`, cadeira local ou null = fantasma,
                             quem senta em cada cadeira, os outros fantasmas, duplas, `rulesEditable`, `restart` = nova partida ou
                             revanche), ações, assinatura de eventos, presença (`setPresence`/`presenceOf`, lida por quadro); `actingFor`
@@ -86,19 +90,23 @@ apps/web         Vite + Svelte 5 + Threlte 8 + three, HUD em dssoca
   src/lib/state.svelte.ts   estado reativo: `live.snap` (espelho do snapshot), `live.table` e `ui` (câmera, seleção, menu, regras offline)
   src/lib/controller.ts     cola entre a mesa e a interface: `attachTable`, log, falas, câmera, prompt derivado do snapshot
   src/lib/input.ts          teclado + pointer lock — só fala com `Table`; fantasma anda com WASD/setas e gira sem limite, e não tem tecla de jogo
-  test/                     bun test: `LocalTable` joga uma partida inteira contra bots sem DOM; `RemoteTable` com socket falso;
+  test/                     bun test: a tabela de tradução (toda chave nas duas línguas, mesmos parâmetros, chamadas em português nas
+                            duas, língua lembrada) e o log (as duas línguas, a carta só valor e naipe, a dica uma vez só e só em inglês);
+                            `LocalTable` joga uma partida inteira contra bots sem DOM; `RemoteTable` com socket falso;
                             `RemoteTable` ligada à sala real por um cano em memória (duas pessoas e dois bots: lobby, partida,
                             revanche; a rede de uma delas morre sem fechar nada: o cano nota o silêncio como o host, o bot
                             entra em 30 s, a aba reconecta sozinha e retoma sem recarregar; e uma fantasma: a presença dela
                             chega aos outros, as jogadas dela são recusadas, e ela senta no lugar de um bot entre mãos)
-  src/lib/format.ts         eventos → texto (PT-BR)
+  src/lib/format.ts         eventos → linhas do log por chave (`LogLine`: mão, vaza, frase e a dica que introduz); `withHint` mantém a
+                            dica só em inglês e só na primeira vez; `renderLine` rende na língua da hora (trocar a língua rende o log inteiro)
   src/lib/scene/            builders (personagens/cartas/fantasmas procedurais), throw (onde a carta cai, sorteado da semente da
                             jogada: igual em toda tela), layout (cartas ocultas, a coberta alheia e o monte são desenhados com as
                             40 cartas físicas que a pessoa não vê em lugar nenhum), gaze (cabeça de quem senta segue a presença
                             que a pessoa mandou; bots olham pelo jogo), camera (olhar; fantasma: andar, ficar atrás de uma cadeira),
                             World.svelte (câmera sentada ou solta, a própria presença dez vezes por segundo, um vulto por fantasma)
-  src/lib/hud/              Score (com o aviso "bot joga por você"), Seats (·bot / ·bot jogando), Keys, Log, Prompt, Menu (regras trancadas
-                            online; seção da sala vinda de fora), RulesForm, Seg, Switch (markup vanilla do dssoca)
+  src/lib/hud/              Score (com o aviso "bot joga por você"), Seats (·bot / ·bot jogando), Keys, Log (com a dica em inglês na linha),
+                            Prompt, Menu (regras trancadas online; seção da sala vinda de fora; idioma), LangSwitch, RulesForm, Seg, Switch
+                            (markup vanilla do dssoca). Toda frase passa por `t` (i18n): nada de texto solto
 
 Dockerfile        imagem oficial do Bun em duas etapas: builda o cliente, roda o servidor (ver Deploy)
 .github/workflows deploy.yml: push na main → check, test, build da imagem no runner, scp do tar, docker load/stop/start, sonda
@@ -127,6 +135,8 @@ o registro DNS, o bloco do nginx em `deploy/truco.passoca.dev.nginx` com upgrade
   Vazas passadas escurecem. O motor só dá a semente da jogada (a mesma para todo mundo); a posição é
   derivada dela no cliente (`scene/throw.ts`).
 - **Teclado primeiro.** Mouse só para olhar (pointer lock). Esc solta o mouse e abre o menu.
+- **Idioma por navegador** (ADR 0005): português padrão, inglês pela troca no início, na sala e no menu; as chamadas
+  ("Truco!", "Seis!", "Corro!") e as mãos especiais ficam em português nas duas, com uma dica em inglês uma vez só.
 - **dssoca** via `theme.css` + `vanilla.css` com o contrato de markup dos componentes Svelte —
   trocar por `import { Button } from 'dssoca'` é 1:1 quando quiser. Menu expõe os dois eixos
   (`data-theme`, `data-size-variant`) e um override de `--ss-accent`.
@@ -135,7 +145,7 @@ o registro DNS, o bloco do nginx em `deploy/truco.passoca.dev.nginx` com upgrade
 
 - `vanilla.css` do dssoca@0.17 tem `:where(:scope)a.ss-svc` que o lightningcss (Vite 8) rejeita;
   `build.cssMinify` está desligado até isso ser corrigido no dssoca.
-- Rede: sala, lobby, partida inteira, bots do servidor, revanche, ausência (bot joga por quem cai ou fica parada;
-  a pessoa retoma ao voltar ou agir) e fantasmas (andam pela mesa, todo mundo os vê, sentam no lugar de um bot entre
-  mãos) já existem (spec #1). Falta a troca de idioma.
+- A spec #1 (sala, lobby, partida inteira, bots do servidor, revanche, ausência, fantasmas, idioma) está inteira. Online, os
+  nomes das duplas e dos bots são dado da sala, iguais para todo mundo, e não traduzem; offline, a cadeira 0 e as duplas
+  vêm da tabela.
 - Onde a carta empatada cai (ao lado × cruzada por cima) — confirmar com a mesa de Minas.

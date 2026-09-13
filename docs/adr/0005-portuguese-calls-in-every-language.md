@@ -1,0 +1,9 @@
+# The interface has two languages, and the table calls stay Portuguese in both
+
+Portuguese is the default; a friend who doesn't read it switches their own browser to English, and the choice is remembered by that browser alone. Every string a person reads goes through one translation table in the client (`apps/web/src/lib/i18n.ts`), keyed, with parameters; the log stores keys and parameters rather than text, so switching language re-renders every line already there. Nothing on the server is translated: nicknames, team names and bot names are room data, the same on every screen. Offline there is no room, so the local seat ("Você"/"You") and the default team names ("Nós"/"Us", "Eles"/"Them") come from the table too. What the characters say at the table ("Truco!", "Aceito.", "Corro!") goes through the table as well, with the same text in both languages.
+
+The calls ("Truco!", "Seis!", "Dez!", "Doze!", "Corro!") and the special-hand names ("mão de dez", "mão de ferro") are not translated in either language. They are what people shout at a real table, and a friend playing in English should learn them, not read a substitute. The first time each one appears in the log for someone reading in English, the line carries a short English hint; the browser remembers which hints it has given, so each appears once. In Portuguese there are no hints and the chance is kept for later; a line that carries a hint hides it while the log is rendered in Portuguese.
+
+## Consequences
+
+Adding a string means adding it in both languages, which the type of the English table enforces, and a test checks that both texts use the same parameters. Card labels are rank and suit symbol only, so they need no translation. Offline, the local seat's name ("Você"/"You") is read from the settings on each snapshot, so it follows the language on the next change of the table, not instantly.

@@ -1,10 +1,12 @@
 <script lang="ts">
   import type { Snippet } from 'svelte';
   import { newGame } from '../controller';
+  import { t } from '../i18n.svelte';
   import { resume } from '../input';
   import { navigate } from '../route.svelte';
   import { live, ui } from '../state.svelte';
   import Kbd from './Kbd.svelte';
+  import LangSwitch from './LangSwitch.svelte';
   import RulesForm from './RulesForm.svelte';
   import Seg from './Seg.svelte';
   import Switch from './Switch.svelte';
@@ -25,13 +27,13 @@
   });
 
   const shortcuts = $derived([
-    ...(snap.seat === null ? [{ group: 'fantasma', rows: [['Andar pela mesa', ['W', 'A', 'S', 'D']], ['Olhar ao redor', ['mouse']], ['Ficar atrás da próxima cadeira', ['Tab']]] }] : []),
-    { group: 'na mesa', rows: [
-      ['Olhar ao redor', ['mouse']], ['Escolher carta', ['←', '→']], ['Jogar a carta escolhida', ['↵', 'espaço']],
-      ['Jogar direto', ['1', '2', '3']], ['Pedir truco / seis / dez / doze', ['T']], ['Cobrir a próxima carta', ['C']], ['Olhar de outra cadeira', ['Tab']],
+    ...(snap.seat === null ? [{ group: t('keys.group.ghost'), rows: [[t('keys.walk'), ['W', 'A', 'S', 'D']], [t('keys.look'), [t('kbd.mouse')]], [t('keys.nextSeat'), ['Tab']]] }] : []),
+    { group: t('keys.group.table'), rows: [
+      [t('keys.look'), [t('kbd.mouse')]], [t('keys.pick'), ['←', '→']], [t('keys.playPicked'), ['↵', t('kbd.space')]],
+      [t('keys.playDirect'), ['1', '2', '3']], [t('keys.raise'), ['T']], [t('keys.cover'), ['C']], [t('keys.otherSeat'), ['Tab']],
     ] },
-    { group: 'quando pedem truco', rows: [['Aceitar / jogar', ['↵']], ['Correr', ['X']], ['Pedir mais', ['R']]] },
-    { group: 'menu', rows: [['Abrir / fechar este menu, soltar o mouse', ['Esc']]] },
+    { group: t('keys.group.truco'), rows: [[t('keys.accept'), ['↵']], [t('keys.decline'), ['X']], [t('keys.raiseMore'), ['R']]] },
+    { group: t('keys.group.menu'), rows: [[t('keys.menu'), ['Esc']]] },
   ] as { group: string; rows: [string, string[]][] }[]);
 </script>
 
@@ -39,35 +41,36 @@
   <div class="tm-backdrop">
     <div class="ss-card elevated tm-menu" data-size-variant="sm">
       <div class="head">
-        <div class="heading"><span class="title">truco mineiro</span><span class="desc">{snap.rulesEditable ? 'mesa offline contra bots' : 'regras trancadas até o fim da partida'}</span></div>
+        <div class="heading"><span class="title">truco mineiro</span><span class="desc">{snap.rulesEditable ? t('menu.offlineDesc') : t('menu.lockedDesc')}</span></div>
         <span class="meta">esc</span>
       </div>
       <div class="body">
         <div>
           {#if room}<div class="tm-section">{@render room()}</div>{/if}
-          <div class="tm-section"><h4>Tema</h4><Seg value={theme} options={[['dark', 'escuro'], ['light', 'claro']]} onselect={(v) => (theme = v)} /></div>
-          <div class="tm-section"><h4>Destaque</h4><Seg value={accent} options={[['', 'verde'], ['yellow', 'âmbar'], ['cyan', 'ciano'], ['magenta', 'magenta'], ['red', 'vermelho']]} onselect={(v) => (accent = v)} /></div>
-          <div class="tm-section"><h4>Tamanho</h4><Seg value={size} options={[['sm', 'sm'], ['md', 'md'], ['lg', 'lg']]} onselect={(v) => (size = v)} /></div>
+          <div class="tm-section"><h4>{t('lang.label')}</h4><LangSwitch /></div>
+          <div class="tm-section"><h4>{t('menu.theme')}</h4><Seg value={theme} options={[['dark', t('theme.dark')], ['light', t('theme.light')]]} onselect={(v) => (theme = v)} /></div>
+          <div class="tm-section"><h4>{t('menu.accent')}</h4><Seg value={accent} options={[['', t('accent.green')], ['yellow', t('accent.amber')], ['cyan', t('accent.cyan')], ['magenta', t('accent.magenta')], ['red', t('accent.red')]]} onselect={(v) => (accent = v)} /></div>
+          <div class="tm-section"><h4>{t('menu.size')}</h4><Seg value={size} options={[['sm', 'sm'], ['md', 'md'], ['lg', 'lg']]} onselect={(v) => (size = v)} /></div>
           <div class="tm-section">
             {#if !snap.rulesEditable}
-              <h4>Regras <span style="text-transform:none;letter-spacing:0">(em vigor nesta partida)</span></h4>
+              <h4>{t('menu.rules')} <span style="text-transform:none;letter-spacing:0">{t('menu.rulesInForce')}</span></h4>
               <RulesForm rules={snap.game.rules} readonly />
             {:else}
-              <h4>Regras <span style="text-transform:none;letter-spacing:0">(aplicam na próxima mão)</span></h4>
+              <h4>{t('menu.rules')} <span style="text-transform:none;letter-spacing:0">{t('menu.rulesNextHand')}</span></h4>
               <RulesForm rules={ui.rules} onchange={(r) => (ui.rules = r)} />
               <div class="tm-rules" style="margin-top:6px">
                 <div class="tm-line">
-                  <span>Bots jogam as outras cadeiras</span>
-                  <Switch label="Bots jogam as outras cadeiras" on={ui.bots} ontoggle={(v) => (ui.bots = v)} />
+                  <span>{t('menu.botsPlay')}</span>
+                  <Switch label={t('menu.botsPlay')} on={ui.bots} ontoggle={(v) => (ui.bots = v)} />
                 </div>
-                <div class="tm-line"><span>Ritmo dos bots</span><Seg value={ui.botDelay} options={[[350, 'rápido'], [800, 'normal'], [1500, 'lento']]} onselect={(v) => (ui.botDelay = v)} /></div>
+                <div class="tm-line"><span>{t('menu.pace')}</span><Seg value={ui.botDelay} options={[[350, t('pace.fast')], [800, t('pace.normal')], [1500, t('pace.slow')]]} onselect={(v) => (ui.botDelay = v)} /></div>
               </div>
             {/if}
           </div>
         </div>
         <div>
           <div class="tm-section">
-            <h4>Teclado</h4>
+            <h4>{t('menu.keyboard')}</h4>
             <div class="ss-shortcuts-help">
               {#each shortcuts as g (g.group)}
                 <div class="group">
@@ -84,9 +87,9 @@
         </div>
       </div>
       <div class="foot">
-        <button class="ss-btn ghost" type="button" onclick={() => navigate('/')}>Início</button>
-        {#if snap.restart}<button class="ss-btn ghost" type="button" onclick={() => { newGame(); resume(); }}>{snap.restart === 'newGame' ? 'Nova partida' : 'Revanche'}</button>{/if}
-        <button class="ss-btn primary" type="button" onclick={resume}>{snap.seat === null ? 'Olhar' : 'Jogar'} <Kbd keys={['↵']} /></button>
+        <button class="ss-btn ghost" type="button" onclick={() => navigate('/')}>{t('nav.home')}</button>
+        {#if snap.restart}<button class="ss-btn ghost" type="button" onclick={() => { newGame(); resume(); }}>{snap.restart === 'newGame' ? t('menu.newGame') : t('menu.rematch')}</button>{/if}
+        <button class="ss-btn primary" type="button" onclick={resume}>{snap.seat === null ? t('menu.watch') : t('menu.play')} <Kbd keys={['↵']} /></button>
       </div>
     </div>
   </div>

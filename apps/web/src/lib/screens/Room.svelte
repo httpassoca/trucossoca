@@ -2,8 +2,11 @@
   import { IDLE_HANDOFF, NICKNAME_MAX, TEAM_NAME_MAX, type RoomMemberView } from '@truco/protocol';
   import { teamOf, type Team } from '@truco/rules';
   import { onMount, untrack } from 'svelte';
+  import LangSwitch from '../hud/LangSwitch.svelte';
   import RulesForm from '../hud/RulesForm.svelte';
   import Switch from '../hud/Switch.svelte';
+  import type { MsgKey } from '../i18n';
+  import { t } from '../i18n.svelte';
   import { rememberNickname, rememberedNickname, token } from '../identity';
   import { openRoom, wsUrl } from '../rooms';
   import { navigate, roomPath } from '../route.svelte';
@@ -44,12 +47,9 @@
   const me = $derived(room?.members.find((m) => m.id === room?.you) ?? null);
   const link = $derived(location.origin + roomPath(code));
   const live = $derived(remote.status === 'open');
-  const STATUS: Record<RemoteState['status'], string> = { idle: '', connecting: 'conectando…', open: 'ao vivo', reconnecting: 'sem conexão, tentando de novo…', closed: '' };
-  const GONE: Record<NonNullable<ClosedReason>, [string, string]> = {
-    'room-not-found': ['Essa sala não existe', 'O código pode estar errado, ou a sala já acabou.'],
-    'room-ended': ['Essa sala acabou', 'Ficou dez minutos sem ninguém fazer nada e fechou.'],
-    replaced: ['Outra aba assumiu', 'Esta sala continua aberta em outra aba deste navegador.'],
-  };
+  const STATUS: Record<RemoteState['status'], MsgKey | null> = { idle: null, connecting: 'status.connecting', open: 'status.open', reconnecting: 'status.reconnecting', closed: null };
+  const status = $derived.by(() => { const k = STATUS[remote.status]; return k ? t(k) : ''; });
+  const GONE = { 'room-not-found': 'notFound', 'room-ended': 'ended', replaced: 'replaced' } as const satisfies Record<NonNullable<ClosedReason>, string>;
 
   // quem não senta é fantasma
   const teamOfMember = (m: RoomMemberView): Team | null => (m.seat === null ? null : teamOf(m.seat));
@@ -82,10 +82,10 @@
 </script>
 
 {#snippet badges(m: RoomMemberView)}
-  {#if m.id === room?.you}<span class="ss-badge brand">você</span>{/if}
-  {#if m.bot}<span class="ss-badge neutral">bot</span>{/if}
-  {#if !m.connected}<span class="ss-badge neutral">caiu</span>{/if}
-  {#if m.botControlled}<span class="ss-badge caution" title="um bot joga por esta pessoa até ela voltar ou agir">bot jogando</span>{/if}
+  {#if m.id === room?.you}<span class="ss-badge brand">{t('badge.you')}</span>{/if}
+  {#if m.bot}<span class="ss-badge neutral">{t('badge.bot')}</span>{/if}
+  {#if !m.connected}<span class="ss-badge neutral">{t('badge.dropped')}</span>{/if}
+  {#if m.botControlled}<span class="ss-badge caution" title={t('badge.botPlaying.title')}>{t('badge.botPlaying')}</span>{/if}
 {/snippet}
 <!-- `handoff`: com os botões da mesa: passar a cadeira a um bot (quem senta) e sentar no lugar de um bot (fantasma) -->
 {#snippet member(m: RoomMemberView, handoff = false)}
@@ -94,25 +94,25 @@
     {@render badges(m)}
     {#if handoff && canHandOff(m)}
       {@const wait = handOffWait(m)}
-      <button class="ss-btn" type="button" disabled={wait > 0} title={wait > 0 ? `só depois de um minuto sem agir: faltam ${wait}s` : 'um bot joga por esta pessoa até ela agir de novo'} onclick={() => table.handToBot(m.id)}>
-        {wait > 0 ? `Passar para um bot (${wait}s)` : 'Passar para um bot'}
+      <button class="ss-btn" type="button" disabled={wait > 0} title={wait > 0 ? t('handoff.wait.title', { wait }) : t('handoff.title')} onclick={() => table.handToBot(m.id)}>
+        {wait > 0 ? t('handoff.wait', { wait }) : t('handoff')}
       </button>
     {:else if handoff && canTakeBot(m)}
       {#if remote.wantsSeat === m.seat}
-        <button class="ss-btn" type="button" title="você senta aqui assim que a mão acabar" onclick={() => table.takeBotSeat(null)}>Sento quando a mão acabar · desistir</button>
+        <button class="ss-btn" type="button" title={t('takeBot.pending.title')} onclick={() => table.takeBotSeat(null)}>{t('takeBot.pending')}</button>
       {:else}
-        <button class="ss-btn" type="button" title="entra na partida no lugar deste bot, entre uma mão e outra" onclick={() => table.takeBotSeat(m.seat!)}>Sentar aqui</button>
+        <button class="ss-btn" type="button" title={t('takeBot.title')} onclick={() => table.takeBotSeat(m.seat!)}>{t('takeBot')}</button>
       {/if}
     {/if}
   </li>
 {/snippet}
 <!-- no menu da mesa: quem senta, quem caiu, e passar a cadeira de quem ficou parada a um bot -->
 {#snippet roomPanel()}
-  <h4>Sala {code} <span style="text-transform:none;letter-spacing:0">({STATUS[remote.status]})</span></h4>
+  <h4>{t('room.panelTitle', { code })} <span style="text-transform:none;letter-spacing:0">({status})</span></h4>
   <ul class="tm-members">
     {#each seated as m (m.id)}{@render member(m, true)}{/each}
   </ul>
-  {#if ghosts.length}<p class="tm-hint">Fantasmas: {ghosts.map((m) => m.nickname).join(', ')}</p>{/if}
+  {#if ghosts.length}<p class="tm-hint">{t('room.ghosts', { names: ghosts.map((m) => m.nickname).join(', ') })}</p>{/if}
 {/snippet}
 
 {#if remote.status === 'closed' && remote.reason}
@@ -120,11 +120,11 @@
     <div class="ss-card elevated tm-panel">
       <div class="body">
         <div class="ss-empty error">
-          <div class="title">{GONE[remote.reason][0]}</div>
-          <p class="msg">{GONE[remote.reason][1]}</p>
+          <div class="title">{t(`gone.${GONE[remote.reason]}.title`)}</div>
+          <p class="msg">{t(`gone.${GONE[remote.reason]}.msg`)}</p>
           <div class="act">
-            <button class="ss-btn primary" type="button" onclick={openRoom}>Abrir uma sala nova</button>
-            <button class="ss-btn ghost" type="button" onclick={() => navigate('/')}>Início</button>
+            <button class="ss-btn primary" type="button" onclick={openRoom}>{t('room.openNew')}</button>
+            <button class="ss-btn ghost" type="button" onclick={() => navigate('/')}>{t('nav.home')}</button>
           </div>
         </div>
       </div>
@@ -133,30 +133,30 @@
 {:else if me && room?.phase === 'playing'}
   <!-- a partida começou: todo mundo cai na mesa 3D; quem não tem cadeira olha como fantasma -->
   <TableScreen {table} menuOpen={false} room={roomPanel} />
-  {#if remote.status !== 'open'}<div class="tm-toast tm-warn">{STATUS[remote.status]}</div>{/if}
+  {#if remote.status !== 'open'}<div class="tm-toast tm-warn">{status}</div>{/if}
 {:else if !me}
   <div class="tm-screen">
     <div class="ss-card elevated tm-panel">
       <div class="head">
-        <div class="heading"><span class="title">sala {code}</span><span class="desc">{room?.phase === 'playing' ? 'a partida já começou — entre para assistir' : 'mande o código ou o link para os amigos'}</span></div>
-        <span class="meta" class:tm-warn={remote.status === 'reconnecting'}>{STATUS[remote.status]}</span>
+        <div class="heading"><span class="title">{t('room.title', { code })}</span><span class="desc">{room?.phase === 'playing' ? t('room.joinToWatch') : t('room.share')}</span></div>
+        <span class="meta" class:tm-warn={remote.status === 'reconnecting'}>{status}</span>
       </div>
       <div class="body">
         <div class="tm-share">
           <span class="tm-code">{code}</span>
-          <button class="ss-btn" type="button" onclick={copy}>{copied ? 'Link copiado' : 'Copiar link'}</button>
+          <button class="ss-btn" type="button" onclick={copy}>{copied ? t('room.copied') : t('room.copy')}</button>
         </div>
         <form class="tm-form" onsubmit={submit}>
           <label class="ss-field">
-            <span class="lbl">Apelido</span>
-            <span class="control"><input class="ss-input" bind:this={field} bind:value={nickname} maxlength={NICKNAME_MAX} placeholder="como te chamam na mesa" spellcheck="false" /></span>
+            <span class="lbl">{t('room.nickname')}</span>
+            <span class="control"><input class="ss-input" bind:this={field} bind:value={nickname} maxlength={NICKNAME_MAX} placeholder={t('room.nicknamePlaceholder')} spellcheck="false" /></span>
           </label>
-          <button class="ss-btn primary" type="submit" disabled={!live || !nickname.trim()}>Entrar</button>
+          <button class="ss-btn primary" type="submit" disabled={!live || !nickname.trim()}>{t('home.enter')}</button>
         </form>
         <div class="tm-section">
-          <h4>Na sala</h4>
+          <h4>{t('room.inRoom')}</h4>
           {#if !room || room.members.length === 0}
-            <p class="tm-hint">Ninguém entrou ainda.</p>
+            <p class="tm-hint">{t('room.nobodyYet')}</p>
           {:else}
             <ul class="tm-members">
               {#each room.members as m (m.id)}{@render member(m)}{/each}
@@ -164,20 +164,20 @@
           {/if}
         </div>
       </div>
-      <div class="foot"><button class="ss-btn ghost" type="button" onclick={() => navigate('/')}>Início</button></div>
+      <div class="foot"><button class="ss-btn ghost" type="button" onclick={() => navigate('/')}>{t('nav.home')}</button><LangSwitch /></div>
     </div>
   </div>
 {:else if room}
   <div class="tm-screen">
     <div class="ss-card elevated tm-panel tm-lobby">
       <div class="head">
-        <div class="heading"><span class="title">sala {code}</span><span class="desc">escolham as duplas; quem está sentado começa</span></div>
-        <span class="meta" class:tm-warn={remote.status === 'reconnecting'}>{STATUS[remote.status]}</span>
+        <div class="heading"><span class="title">{t('room.title', { code })}</span><span class="desc">{t('room.pickTeams')}</span></div>
+        <span class="meta" class:tm-warn={remote.status === 'reconnecting'}>{status}</span>
       </div>
       <div class="body">
         <div class="tm-share">
           <span class="tm-code">{code}</span>
-          <button class="ss-btn" type="button" onclick={copy}>{copied ? 'Link copiado' : 'Copiar link'}</button>
+          <button class="ss-btn" type="button" onclick={copy}>{copied ? t('room.copied') : t('room.copy')}</button>
         </div>
 
         <div class="tm-teams">
@@ -185,55 +185,56 @@
             {@const members = seatedIn(team)}
             <div class="ss-card tm-team" class:mine={myTeam === team}>
               <div class="head">
-                <input class="ss-input tm-team-name" value={room.teams[team]} maxlength={TEAM_NAME_MAX} aria-label="nome da dupla" spellcheck="false" onchange={(e) => rename(team, e)} />
+                <input class="ss-input tm-team-name" value={room.teams[team]} maxlength={TEAM_NAME_MAX} aria-label={t('room.teamName')} spellcheck="false" onchange={(e) => rename(team, e)} />
               </div>
               <div class="body">
                 <ul class="tm-members">
                   {#each members as m (m.id)}{@render member(m)}{/each}
-                  {#each { length: 2 - members.length } as _, i (i)}<li class="empty"><span>cadeira livre (bot se ninguém sentar)</span></li>{/each}
+                  {#each { length: 2 - members.length } as _, i (i)}<li class="empty"><span>{t('room.freeSeat')}</span></li>{/each}
                 </ul>
               </div>
               <div class="foot">
-                <button class="ss-btn" type="button" disabled={!live || myTeam === team || members.length >= 2} onclick={() => table.takeSeat(team)}>{myTeam === team ? 'Você está aqui' : 'Sentar aqui'}</button>
+                <button class="ss-btn" type="button" disabled={!live || myTeam === team || members.length >= 2} onclick={() => table.takeSeat(team)}>{myTeam === team ? t('room.youAreHere') : t('room.sitHere')}</button>
               </div>
             </div>
           {/each}
         </div>
 
         <div class="tm-section">
-          <h4>Sem cadeira <span style="text-transform:none;letter-spacing:0">(assistem como fantasmas)</span></h4>
+          <h4>{t('room.noSeat')} <span style="text-transform:none;letter-spacing:0">{t('room.noSeat.sub')}</span></h4>
           {#if ghosts.length === 0}
-            <p class="tm-hint">Ninguém.</p>
+            <p class="tm-hint">{t('room.nobody')}</p>
           {:else}
             <ul class="tm-members">
               {#each ghosts as m (m.id)}{@render member(m)}{/each}
             </ul>
           {/if}
-          {#if me.seat !== null}<button class="ss-btn ghost" type="button" disabled={!live} onclick={() => table.leaveSeat()}>Levantar da cadeira</button>{/if}
+          {#if me.seat !== null}<button class="ss-btn ghost" type="button" disabled={!live} onclick={() => table.leaveSeat()}>{t('room.standUp')}</button>{/if}
         </div>
 
         <div class="tm-section">
-          <h4>Regras <span style="text-transform:none;letter-spacing:0">(qualquer pessoa ajusta; trancam quando a partida começa)</span></h4>
+          <h4>{t('room.rules')} <span style="text-transform:none;letter-spacing:0">{t('room.rules.sub')}</span></h4>
           <RulesForm rules={room.rules} onchange={(r) => table.setRules(r)} readonly={!live} />
           <div class="tm-rules" style="margin-top:6px">
             <div class="tm-line">
-              <span>Fantasmas veem as cartas de todo mundo</span>
-              <Switch label="Fantasmas veem as cartas" on={room.ghostsSeeCards} disabled={!live} ontoggle={(v) => table.setGhostsSeeCards(v)} />
+              <span>{t('room.ghostsSee')}</span>
+              <Switch label={t('room.ghostsSee')} on={room.ghostsSeeCards} disabled={!live} ontoggle={(v) => table.setGhostsSeeCards(v)} />
             </div>
           </div>
         </div>
 
         <form class="tm-form" onsubmit={submit}>
           <label class="ss-field">
-            <span class="lbl">Seu apelido</span>
+            <span class="lbl">{t('room.yourNickname')}</span>
             <span class="control"><input class="ss-input" bind:value={nickname} maxlength={NICKNAME_MAX} spellcheck="false" /></span>
           </label>
-          <button class="ss-btn" type="submit" disabled={!live || !nickname.trim() || nickname.trim() === me.nickname}>Trocar</button>
+          <button class="ss-btn" type="submit" disabled={!live || !nickname.trim() || nickname.trim() === me.nickname}>{t('room.rename')}</button>
         </form>
       </div>
       <div class="foot">
-        <button class="ss-btn ghost" type="button" onclick={() => navigate('/')}>Início</button>
-        <button class="ss-btn primary" type="button" disabled={!canStart} title={me.seat === null ? 'Sente numa dupla para começar' : ''} onclick={() => table.start()}>Começar a partida</button>
+        <button class="ss-btn ghost" type="button" onclick={() => navigate('/')}>{t('nav.home')}</button>
+        <LangSwitch />
+        <button class="ss-btn primary" type="button" disabled={!canStart} title={me.seat === null ? t('room.sitToStart') : ''} onclick={() => table.start()}>{t('room.start')}</button>
       </div>
     </div>
   </div>

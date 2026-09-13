@@ -1,5 +1,6 @@
 import type { CardId, DezAction, GameEvent, RespondAction, Seat } from '@truco/rules';
-import { callName, formatEvent } from './format';
+import { callName, formatEvent, withHint } from './format';
+import { hints, i18n, t } from './i18n.svelte';
 import { resetLook, spawnSeat, standBehind } from './scene/camera';
 import { resetLayout } from './scene/layout';
 import { live, ui, type Prompt } from './state.svelte';
@@ -60,9 +61,9 @@ export function onTableChange(snap: TableSnapshot, events: GameEvent[]) {
   live.snap = snap;
   for (const e of events) {
     const line = formatEvent(e, snap);
-    if (line) { ui.log.push(line); if (ui.log.length > 60) ui.log.shift(); }
+    if (line) { ui.log.push(withHint(line, i18n.lang, hints)); if (ui.log.length > 60) ui.log.shift(); }
     if (e.type === 'raise') bus.say(e.seat, callName(e.to));
-    if (e.type === 'respond') bus.say(e.seat, e.action === 'accept' ? 'Aceito.' : 'Corro!');
+    if (e.type === 'respond') bus.say(e.seat, t(e.action === 'accept' ? 'say.accept' : 'say.decline'));
     if (e.type === 'play') bus.lastPlay = { id: e.id, t: performance.now() };
     if (e.type === 'newHand') ui.sel = 0;
   }
