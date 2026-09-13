@@ -10,6 +10,8 @@
   const mine = $derived(myTurn(snap, ui.view));
   const raiseLabel = $derived(h ? callName(snap.game.rules.ladder[h.ladderIdx + 1] ?? 12).toLowerCase() : '');
   const raisable = $derived(mayRaise(snap, ui.view));
+  /** enquanto as cartas são dadas, as teclas de jogo esperam */
+  const dealing = $derived(ui.dealing);
 </script>
 
 <div class="tm-keys">
@@ -18,10 +20,13 @@
     <span class="tm-k hot"><Kbd keys={['W', 'A', 'S', 'D']} /><span>{t('hud.walk')}</span></span>
     <span class="tm-k"><Kbd keys={[t('kbd.space')]} /><span>{t('hud.jump')}</span></span>
     <span class="tm-k"><Kbd keys={['Tab']} /><span>{t('hud.nextSeat')}</span></span>
+    {#if ui.nearBotSeat >= 0}<span class="tm-k hot"><Kbd keys={[t('kbd.shift')]} /><span>{t('keys.sitBot')}</span></span>{/if}
   {:else if ui.standing}
     <span class="tm-k hot"><Kbd keys={['W', 'A', 'S', 'D']} /><span>{t('hud.walk')}</span></span>
     <span class="tm-k"><Kbd keys={[t('kbd.space')]} /><span>{t('hud.jump')}</span></span>
     <span class="tm-k" class:hot={ui.nearSeat}><Kbd keys={[t('kbd.shift')]} /><span>{t('hud.sit')}</span></span>
+  {:else if dealing}
+    <span class="tm-k"><span>{t('hud.dealing')}</span></span>
   {:else if mine}
     <span class="tm-k hot"><Kbd keys={['←', '→']} /><span>{t('hud.pick')}</span></span>
     <span class="tm-k hot"><Kbd keys={['↵']} /><span>{t('hud.play')}</span></span>
@@ -32,6 +37,7 @@
     <span class="tm-k"><Kbd keys={['T']} /><span>{t('hud.raise')}</span></span>
   {/if}
   {#if snap.seat !== null && !ui.standing}
+    {#if !dealing}<span class="tm-k" class:on={ui.peek}><Kbd keys={[t('kbd.shift')]} /><span>{t('hud.peek')}</span></span>{/if}
     <span class="tm-k"><Kbd keys={[t('kbd.rightClick')]} /><span>{t('hud.zoom')}</span></span>
     <span class="tm-k"><Kbd keys={[t('kbd.space'), t('kbd.space')]} /><span>{t('hud.standUp')}</span></span>
     {#if canCycleSeats(snap)}<span class="tm-k"><Kbd keys={['Tab']} /><span>{t('hud.seat')}</span></span>{/if}

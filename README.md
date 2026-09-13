@@ -18,29 +18,38 @@ packages/rules   motor puro em TypeScript — sem DOM, sem three.js. Vai virar a
   src/types.ts     tipos (Rules, GameState, HandState, Play, GameEvent…) — nomes do glossário em CONTEXT.md:
                    `hand` = mão, `trick` = vaza (evento `trick`), `cards` = cartas que cada cadeira segura
   src/cards.ts     baralho de 40, força das cartas, manilhas fixas
-  src/engine.ts    createGame / startHand / playCard (fecha a vaza com 4 cartas; cada jogada leva uma semente de onde a
-                   carta cai) / raise / respond / decideDez / handWinner; `viewFor(game, viewer)` = a partida como uma
-                   cadeira (ou tudo/nada) a vê: `GameView`, cartas alheias viram null, a coberta de outra cadeira perde o
-                   id e o monte vira contagem; `eventsFor` faz o mesmo com o lote de eventos. Os guardas (`canRaise`…)
-                   leem `GameReadable`, que serve às duas
-  src/bot.ts       decisões dos bots (só olham as próprias cartas)
-  test/            bun test
+  src/engine.ts    createGame / startHand (ADR 0008: o carteador `dealer` é sorteado na primeira mão e passa para a direita
+                   a cada mão; o mão é a cadeira à direita dele, quem corta a da esquerda (`cutterOf`); as cartas saem uma
+                   por vez do mão para a direita (`dealOrder`); o evento `newHand` leva `mao`, `dealer` e `cutter`) / playCard
+                   (fecha a vaza com 4 cartas; cada jogada leva uma semente de onde a carta cai) / raise / respond / decideDez
+                   / handWinner; `handUntouched` = nada aconteceu desde a distribuição; `viewFor(game, viewer)` = a partida
+                   como uma cadeira (ou tudo/nada) a vê: `GameView` (com `dealer`), cartas alheias viram null, a coberta de
+                   outra cadeira perde o id e o monte vira contagem; `eventsFor` faz o mesmo com o lote de eventos. Os
+                   guardas (`canRaise`…) leem `GameReadable`, que serve às duas
+  src/bot.ts       decisões dos bots (só olham as próprias cartas) e `thinkTime(rng, kind)`: quanto um bot pensa antes de
+                   agir, sorteado (jogar 1-4 s puxado para 1-2 s; responder truco ou decidir a mão de dez 2-4 s)
+  test/            bun test; `deck.ts` = `deckFor(hands, mao, rest)`, o baralho que dá a cada cadeira as cartas pedidas
+                   (o servidor reusa nos testes roteirizados)
 
 packages/protocol  mensagens cliente ↔ servidor (uniões discriminadas nos dois sentidos: sala, jogadas — play, raise,
                    respond, decideDez, rematch —, `takeBotSeat` (fantasma senta no lugar de um bot), `presence` (posição e
                    olhar) e de volta snapshot, lote de eventos, erro de jogada recusada, presença de outro membro, pong),
                    `RoomSnapshot` (membros com cadeira e bot, duplas, regras, toggle dos fantasmas, cenário, `game` como esta
-                   pessoa vê), `parseClientMessage` (valida as regras inteiras e as cartas), códigos de fechamento do
-                   WebSocket. Importado pelos dois lados.
+                   pessoa vê), `parseClientMessage` (valida as regras inteiras, as cartas e a presença, com o `peek` opcional
+                   de quem levanta as cartas para olhar), `parseRules` e `isScenery` (o servidor valida o corpo de
+                   `POST /api/rooms` com eles), códigos de fechamento do WebSocket, e `DEAL_MS`: quanto toda tela leva para
+                   embaralhar, cortar e dar depois do `newHand`; os bots não agem antes disso. Importado pelos dois lados.
 
-apps/server      Bun.serve: HTTP (`/health`, `POST /api/rooms`, cliente estático com fallback SPA) e WebSocket em `/ws`
+apps/server      Bun.serve: HTTP (`/health`, `POST /api/rooms` com corpo JSON opcional `{ rules?, scenery? }`: o que não passa
+                 na validação do protocolo é ignorado, cliente estático com fallback SPA) e WebSocket em `/ws`
   src/room.ts      máquina de estado da sala, pura: `step(state, input, now, { rng, deck })` → estado novo, mensagens
                    por token, eventos para o log; timers como dado em `state.timers` (morte em 10 min, saída 20 s após
                    cair, vez de um bot, mão seguinte). Lobby: sentar numa dupla (primeira cadeira livre), levantar,
                    renomear dupla, regras, cenário, toggle dos fantasmas; `start` (só quem senta) preenche cadeiras vazias com
                    bots, dá a primeira mão e tranca duplas, nomes e regras. Partida: as jogadas de quem senta passam
-                   pelos guardas do motor (recusa = `error` só para quem errou), os bots agem quando o timer vence no
-                   ritmo da sala (`pace`), truco e mão de dez são da dupla (com gente na dupla, o bot parceiro espera),
+                   pelos guardas do motor (recusa = `error` só para quem errou), os bots agem quando o timer vence: pensam
+                   `thinkTime` vezes `pace.think`, e a primeira ação de cada mão espera antes a coreografia de dar as
+                   cartas (`pace.deal` = `DEAL_MS`), truco e mão de dez são da dupla (com gente na dupla, o bot parceiro espera),
                    a mão seguinte vem depois da pausa, e no fim de jogo `rematch` (quem senta) devolve a sala ao lobby
                    com as mesmas cadeiras. Ausência: quem cai segura a cadeira 20 s e depois um bot joga por ela
                    (`botControlled`, sem sair da sala; se a queda só foi notada pelo silêncio, os 20 s contam desde o último
@@ -56,29 +65,40 @@ apps/server      Bun.serve: HTTP (`/health`, `POST /api/rooms`, cliente estátic
                    socket que não manda nada (nem `ping`) por 30 s é derrubado como queda (a rede que morre não fecha o socket).
                    Presença passa por aqui, fora da sala: a de cada membro vai aos outros sockets no máximo dez vezes por
                    segundo (`PRESENCE_INTERVAL`), guardando só a mais recente enquanto a janela não abre
-  src/rooms.ts     `Rooms`: as salas vivas num mapa em memória (ADR 0004), códigos de 4 letras
+  src/rooms.ts     `Rooms`: as salas vivas num mapa em memória (ADR 0004), códigos de 4 letras; `create(init)` nasce com as
+                   regras e o cenário pedidos
   src/server.ts    rotas e upgrade; sala inexistente fecha o socket com `CLOSE_ROOM_NOT_FOUND`
   test/            bun test: sala (entrar, sufixo, cair, voltar, morrer), lobby (cadeiras, duplas, começar, trancas,
-                   visibilidade), partida (cinco mãos roteirizadas com baralho fixo, recusas, bots por timer, mão de dez,
+                   visibilidade, regras e cenário de nascimento), partida (cinco mãos roteirizadas com baralho fixo e o
+                   carteador da primeira mão fixado, o carteador passando, recusas, bots por timer com o tempo de pensar e a
+                   espera pela coreografia, mão de dez,
                    coberta, ausência: tomada, retomada, passar cadeira, revanche; fantasma senta no lugar de um bot entre
                    mãos), host (silêncio no socket, repasse de presença) e um servidor real numa porta livre (duas abas e
-                   dois bots jogam uma partida inteira)
+                   dois bots jogam uma partida inteira; `POST /api/rooms` com regras e cenário no corpo)
 
 apps/web         Vite + Svelte 5 + Threlte 8 + three, HUD em dssoca
-  src/lib/route.svelte.ts   rotas: `/` início, `/sala/CODE`, `/offline`
-  src/lib/screens/          Home (abrir sala, entrar com código, offline); Room (apelido → lobby com duplas, fantasmas, regras,
-                            toggle, começar → a mesa, e no menu da mesa a seção da sala: quem caiu, por quem um bot joga, e o
-                            botão de passar a cadeira de quem está parada há 1 min); Table (cena + HUD atrás de qualquer `Table`,
-                            com a seção extra do menu como snippet); Offline (mesa local)
-  src/lib/identity.ts       token por aba (sessionStorage) e apelido lembrado (localStorage)
+  src/lib/route.svelte.ts   rotas: `/` início, `/sala/CODE`, `/offline`, `/offline/assistir` (fantasma numa mesa de quatro bots)
+  src/lib/screens/          Home em duas colunas: à esquerda abrir sala, entrar com código, jogar offline e "assistir com 4 bots";
+                            à direita as regras e o cenário (`hud/RulesPanel`), lembrados no navegador e mandados no corpo de
+                            `POST /api/rooms` ao abrir a sala; Room (apelido → lobby com duplas, fantasmas, o mesmo painel de regras
+                            mais o toggle dos fantasmas, começar → a mesa, e no menu da mesa a seção da sala: quem caiu, por quem um
+                            bot joga, e o botão de passar a cadeira de quem está parada há 1 min); Table (cena + HUD atrás de
+                            qualquer `Table`, com a seção extra do menu como snippet); Offline (mesa local; `watch` pela rota)
+  src/lib/identity.ts       token por aba (sessionStorage); apelido, regras (validadas com `parseRules`), cenário offline e os
+                            grupos abertos do menu lembrados (localStorage)
   src/lib/i18n.ts           a tabela de tradução (pt padrão, en), `translate`, e as dicas em inglês: as chamadas da mesa e as mãos
                             especiais ficam em português nas duas línguas, e `HintBook` dá a dica de cada uma só na primeira vez
                             (lembrado no navegador). Módulo puro, testado. `i18n.svelte.ts` põe a língua num `$state` (`t`, `setLang`,
                             lembrada em localStorage, `<html lang>` acompanha); `hud/LangSwitch` é a troca, no início, na sala e no menu
   src/lib/table/table.ts    interface `Table` (ADR 0003): snapshot imutável (`GameView`, cadeira local ou null = fantasma,
                             quem senta em cada cadeira, os outros fantasmas, duplas, `rulesEditable`, `restart` = nova partida ou
-                            revanche), ações, assinatura de eventos, presença (`setPresence`/`presenceOf`, lida por quadro); `actingFor`
-  src/lib/table/local.ts    `LocalTable`: motor e bots no navegador, com ritmo dos bots e pausa entre mãos (timers injetáveis)
+                            revanche), ações, `takeBotSeat` (fantasma senta no lugar de um bot entre mãos), assinatura de eventos,
+                            presença (`setPresence`/`presenceOf`, lida por quadro); `actingFor`
+  src/lib/table/local.ts    `LocalTable`: motor e bots no navegador; os bots pensam `thinkTime` vezes `botPace` (0.5 rápido, 1 normal,
+                            2 devagar) e a primeira ação de cada mão espera a coreografia (`DEAL_MS`); pausa entre mãos; timers
+                            injetáveis. `watch`: a pessoa é um fantasma numa mesa de quatro bots (`Nena` na cadeira 0), vê todas as
+                            cartas, e `takeBotSeat` a senta no lugar de um bot entre mãos (no meio de uma mão fica como intenção,
+                            `wantsSeat`); nova partida devolve ao lugar de fantasma
   src/lib/table/remote.ts   `RemoteTable`: conecta na sala com o token, aplica snapshots, reconecta com espera crescente, pinga
                             (um intervalo inteiro sem nada do servidor = socket morto: fecha e reconecta; `reconnect()` faz o mesmo
                             quando o navegador avisa que perdeu a rede, `retryNow()` quando volta); `watch` = a sala (lobby),
@@ -92,7 +112,8 @@ apps/web         Vite + Svelte 5 + Threlte 8 + three, HUD em dssoca
   src/lib/input.ts          teclado + pointer lock — só fala com `Table`; fantasma anda com WASD/setas e gira sem limite, e não tem tecla de jogo
   test/                     bun test: a tabela de tradução (toda chave nas duas línguas, mesmos parâmetros, chamadas em português nas
                             duas, língua lembrada) e o log (as duas línguas, a carta só valor e naipe, a dica uma vez só e só em inglês);
-                            `LocalTable` joga uma partida inteira contra bots sem DOM; `RemoteTable` com socket falso;
+                            `LocalTable` joga uma partida inteira contra bots sem DOM (ritmo, carteador passando, e quem assiste quatro
+                            bots e senta entre mãos); `RemoteTable` com socket falso;
                             `RemoteTable` ligada à sala real por um cano em memória (duas pessoas e dois bots: lobby, partida,
                             revanche; a rede de uma delas morre sem fechar nada: o cano nota o silêncio como o host, o bot
                             entra em 30 s, a aba reconecta sozinha e retoma sem recarregar; e uma fantasma: a presença dela
@@ -111,17 +132,28 @@ apps/web         Vite + Svelte 5 + Threlte 8 + three, HUD em dssoca
                             criptas, cerca, catedral, corvos, velas e lustre; baralho preto e cobre). `kit.ts`: sorteio semeado, texturas em
                             canvas (null sem DOM), formas curtas, limpeza. Cada cenário roda sem navegador: cadeiras, alturas e zonas das
                             cartas são testadas com `bun test`
-  src/lib/scene/            builders (bonecos sentados nas cadeiras do cenário, vultos dos fantasmas, cartas: costas dos dois lados para quem
-                            não conhece a carta, vestidas com o baralho do cenário), throw (onde a carta cai, sorteado da semente da jogada: igual em toda tela), layout
-                            (cartas ocultas, a coberta alheia e o monte são desenhados com as 40 cartas físicas que a pessoa não vê em
-                            lugar nenhum), gaze (quem senta olha para onde a presença diz e se inclina quanto ela diz; bots olham pelo
-                            jogo), camera (olhar, zoom; andar e pular com gravidade: a mesa é chão elevado, o assento também; levantar
-                            e sentar; ler de uma presença se a pessoa está de pé e quanto se inclina; a cerca vem do cenário), World.svelte
+  src/lib/scene/            builders (bonecos sentados nas cadeiras do cenário, com a etiqueta sobre a cabeça marcando quem carteia e por quem
+                            um bot joga; vultos dos fantasmas; cartas: costas dos dois lados para quem não conhece a carta, vestidas com o
+                            baralho do cenário; `monteSpot`, onde o monte fica na frente da mão; a dica sobre uma carta da mesa), throw (onde a
+                            carta cai, sorteado da semente da jogada: igual em toda tela), tween (as cartas andam por caminhos no tempo: trechos
+                            com destino, hora, duração e arco; `DUR` tem as durações), layout (as cartas de cada cadeira na mão dela: baixas e
+                            viradas para baixo, ou levantadas diante do rosto quando a pessoa olha, o bot pensa, ou o parceiro mostra na mão
+                            de dez; cartas ocultas, a coberta alheia e o monte são desenhados com as 40 cartas físicas que a pessoa não vê em
+                            lugar nenhum; `choreographDeal` monta a coreografia da mão nova a partir do `newHand`: juntar na frente do
+                            carteador, embaralhar, cortar à esquerda, uma carta por vez começando pela mão, sobras no monte), gaze (quem
+                            senta olha para onde a presença diz e se inclina quanto ela diz; bots olham pelo jogo), camera (olhar, zoom;
+                            andar e pular com gravidade: a mesa é chão elevado, o assento também; levantar e sentar; `nearBotSeat` para o
+                            fantasma sentar no lugar de um bot; ler de uma presença se a pessoa está de pé e quanto se inclina; a cerca vem
+                            do cenário), World.svelte
                             (o cenário do snapshot montado inteiro e trocado inteiro; câmera nos olhos do boneco, sentada ou solta; a própria
                             presença dez vezes por segundo, com altura; um vulto por fantasma; as reações agendadas com um atraso por boneco)
-  src/lib/hud/              Score (com o aviso "bot joga por você"), Seats (·bot / ·bot jogando), Keys, Log (com a dica em inglês na linha),
-                            Prompt, Menu (regras trancadas online; seção da sala vinda de fora; idioma; cenário, offline na hora e lembrado
-                            no navegador), LangSwitch, RulesForm, Seg, Switch
+  src/lib/hud/              Score (uma linha no alto e no centro: dupla e pontos, as três vazas de cada dupla como pontos ● ○ ◐, o valor
+                            da mão ou a mão especial ou "sua vez", a seta em quem age, e os avisos "fantasma" / "bot joga por você"),
+                            Keys (a barra de teclas; some o jogo enquanto as cartas são dadas), Log (maior; um cabeçalho a cada mão,
+                            "Mão 4 · vale 2 · carteia Zé", e um traço a cada vaza fechada; a dica em inglês na linha), Prompt (terço de baixo,
+                            uma fila de botões cheios: aceitar, correr, pedir mais), Menu (grupos de acordeão: Sala, Comandos, Regras,
+                            Cenário, Interface; cada um lembra se ficou aberto; regras trancadas online; seção da sala vinda de fora),
+                            RulesPanel (RulesForm + cenário, no início e no lobby), LangSwitch, RulesForm, Seg, Switch
                             (markup vanilla do dssoca). Toda frase passa por `t` (i18n): nada de texto solto
 
 Dockerfile        imagem oficial do Bun em duas etapas: builda o cliente, roda o servidor (ver Deploy)
@@ -146,13 +178,20 @@ o registro DNS, o bloco do nginx em `deploy/truco.passoca.dev.nginx` com upgrade
   empate nas três vazas não pontua. Alterações no menu aplicam na próxima mão.
 - **Eventos, não texto.** O motor emite `GameEvent`s estruturados; o cliente formata e anima.
   Um servidor autoritativo replica exatamente isso por WebSocket.
+- **O carteador é do motor** (ADR 0008): quem dá, quem corta e a ordem das cartas são estado e evento (`newHand`), não
+  coreografia da cena; toda tela anima a mesma distribuição, o monte fica na frente do próximo carteador, e os bots
+  (servidor e mesa local) só agem depois de `DEAL_MS`, o tempo fixo da coreografia. Bots pensam um tempo sorteado
+  (`thinkTime`), para parecer gente.
 - **Cartas na mesa** caem "humanamente": `lead` perto do centro, `kill` em cima da carta que mata
   (puxada para quem jogou e atravessada), `tie` ao lado, `lose` e `cover` perto do jogador e tortas.
   Vazas passadas escurecem. O motor só dá a semente da jogada (a mesma para todo mundo); a posição é
   derivada dela no cliente (`scene/throw.ts`).
 - **Teclado primeiro.** Mouse só para olhar (pointer lock) e, com o botão direito, chegar perto. Esc solta o mouse e abre o menu.
   Espaço pula: sentado, quica na cadeira; duas vezes, levanta e anda (WASD) e pula pela mesa, subindo nela se quiser, ainda
-  jogando pela cadeira; Shift perto da cadeira senta de novo. Enter joga a carta escolhida (espaço não).
+  jogando pela cadeira; Shift perto da cadeira senta de novo. Enter joga a carta escolhida (espaço não). Sentado, Shift segurado
+  levanta as cartas para olhar (todo mundo vê que está olhando); fantasma perto da cadeira de um bot, Shift senta no lugar dele
+  entre mãos. A mira (ou o mouse solto) sobre uma carta da mesa diz quem jogou e em que vaza. O esquema com mouse agindo
+  (cursor solto sentado, botão direito para olhar) está proposto em `docs/research/controls.md`.
 - **Bonecos procedurais** (ADR 0006): cada apelido tem o seu molho, sorteado do apelido, igual em toda tela; bots vestem os seis
   molhos regionais. Ninguém vê as cartas dos outros, de pé ou sentado; só fantasmas, quando a sala deixa: uma carta que a pessoa
   não conhece mostra as costas dos dois lados. Tab só troca de cadeira para fantasma e na mesa offline sem bots.

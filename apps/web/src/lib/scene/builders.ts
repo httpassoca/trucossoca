@@ -4,6 +4,7 @@ import type { Presence } from '../table/table';
 import { BUDDY_HEIGHT, createBuddy, type Buddy } from './buddy/model';
 import { outfitFor } from './buddy/molho';
 import type { DeckArt } from './scenery/scenery';
+import type { Segment } from './tween';
 
 export const TABLE_R = 1.2, TABLE_TOP = 0.76, SEAT_R = 1.62;
 export const CARD_W = 0.19, CARD_H = 0.27;
@@ -12,6 +13,8 @@ export const UI_FONT = '"JetBrains Mono", "Caskaydia Cove", ui-monospace, Menlo,
 export const seatAngle = (s: Seat) => s * Math.PI / 2;
 export const seatDir = (s: Seat) => new THREE.Vector3(Math.sin(seatAngle(s)), 0, Math.cos(seatAngle(s)));
 export const seatRight = (s: Seat) => new THREE.Vector3(Math.cos(seatAngle(s)), 0, -Math.sin(seatAngle(s)));
+/** Onde o monte fica durante a mão: na frente da mão (a cadeira à direita do carteador), do lado direito dela, fora do caminho das cartas. */
+export const monteSpot = (mao: Seat) => seatDir(mao).multiplyScalar(0.70).addScaledVector(seatRight(mao), 0.42);
 
 const place = <T extends THREE.Object3D>(m: T, x: number, y: number, z: number) => { m.position.set(x, y, z); return m; };
 
@@ -23,9 +26,15 @@ export interface Character {
   standing: boolean; air: boolean; bounced: number; prev: THREE.Vector3;
   /** a reação mais recente, para uma mais antiga não desfazer uma nova ao terminar */
   reaction: number;
+  /** as marcas desenhadas na etiqueta agora (e a chave que as resume, para não redesenhar à toa) */
+  marks: LabelMarks; marksKey: string; botSuffix: string;
+  /** as cartas desta cadeira estão levantadas (a pessoa olha para elas; um bot, enquanto pensa) */
+  lifted: boolean;
 }
 
-const LABEL_COLOR = '#dae0da', LABEL_ON_COLOR = '#66ef73';
+const LABEL_COLOR = '#dae0da', LABEL_ON_COLOR = '#66ef73', TIP_COLOR = '#f2e9c8';
+/** O que a etiqueta sobre a cabeça mostra além do nome: quem carteia (uma carta ao lado do nome) e por quem um bot joga. */
+export interface LabelMarks { dealer: boolean; botControlled: boolean }
 const LABEL_Y = BUDDY_HEIGHT + 0.12, BUBBLE_Y = BUDDY_HEIGHT + 0.34;
 
 /** O boneco olha para +z; a cadeira olha para -z (a mesa): o boneco entra virado. */
@@ -42,7 +51,10 @@ export function makeCharacter(seat: Seat, name: string, bot: boolean, molhoKey =
   const bubble = new THREE.Sprite(new THREE.SpriteMaterial({ transparent: true, toneMapped: false }));
   bubble.position.set(0, BUBBLE_Y, 0); bubble.scale.set(0.7, 0.175, 1); bubble.visible = false; g.add(bubble);
   g.position.copy(seatDir(seat).multiplyScalar(SEAT_R)); g.rotation.y = seatAngle(seat);
-  return { seat, name, bot, molhoKey, g, buddy, label, labelOn, bubble, bubbleUntil: 0, talkUntil: 0, standing: false, air: false, bounced: 0, prev: g.position.clone(), reaction: 0 };
+  return {
+    seat, name, bot, molhoKey, g, buddy, label, labelOn, bubble, bubbleUntil: 0, talkUntil: 0, standing: false, air: false, bounced: 0, prev: g.position.clone(), reaction: 0,
+    marks: { dealer: false, botControlled: false }, marksKey: '', botSuffix: 'bot', lifted: false,
+  };
 }
 
 /** Quem senta na cadeira mudou: o nome sobre a cabeça e o molho seguem. */
@@ -50,24 +62,64 @@ export function nameCharacter(ch: Character, name: string, bot: boolean, molhoKe
   if (ch.name === name && ch.bot === bot && ch.molhoKey === molhoKey) return;
   ch.name = name; ch.bot = bot; ch.molhoKey = molhoKey;
   ch.buddy.setOutfit(outfitFor(molhoKey, bot, 'OnTable'));
+  ch.marksKey = '';
+  markCharacter(ch, ch.marks, ch.botSuffix);
+}
+
+/** As marcas da etiqueta (carteador, bot jogando pela pessoa) mudaram: redesenha só quando o texto muda. `botSuffix` é a palavra "bot" na língua da hora. */
+export function markCharacter(ch: Character, marks: LabelMarks, botSuffix: string) {
+  const key = `${ch.name}|${marks.dealer ? 'd' : ''}|${marks.botControlled ? 'b' : ''}|${botSuffix}`;
+  if (key === ch.marksKey) return;
+  ch.marksKey = key; ch.marks = { ...marks }; ch.botSuffix = botSuffix;
+  const text = marks.botControlled ? `${ch.name} ·${botSuffix}` : ch.name;
   for (const [sprite, color] of [[ch.label, LABEL_COLOR], [ch.labelOn, LABEL_ON_COLOR]] as const) {
     const mat = sprite.material as THREE.SpriteMaterial;
-    mat.map?.dispose(); mat.map = textTexture(name, color); mat.needsUpdate = true;
+    mat.map?.dispose(); mat.map = textTexture(text, color, 40, 256, 64, marks.dealer); mat.needsUpdate = true;
   }
 }
 
 function canvasTexture(c: HTMLCanvasElement) { const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t; }
 
-function textTexture(text: string, color: string, size = 40, w = 256, h = 64) {
+/** Texto centrado com contorno; `deckBadge` desenha uma cartinha à esquerda do nome (a marca de quem carteia). O texto encolhe até caber. */
+function textTexture(text: string, color: string, size = 40, w = 256, h = 64, deckBadge = false) {
   const c = document.createElement('canvas'); c.width = w; c.height = h; const x = c.getContext('2d')!;
-  x.font = `bold ${size}px ${UI_FONT}`; x.textAlign = 'center'; x.textBaseline = 'middle';
-  x.lineWidth = 6; x.strokeStyle = 'rgba(0,0,0,.65)'; x.strokeText(text, w / 2, h / 2); x.fillStyle = color; x.fillText(text, w / 2, h / 2);
+  x.textAlign = 'center'; x.textBaseline = 'middle';
+  const badgeW = deckBadge ? 34 : 0, maxW = w - 16 - badgeW;
+  let px = size; x.font = `bold ${px}px ${UI_FONT}`;
+  while (px > 18 && x.measureText(text).width > maxW) { px -= 2; x.font = `bold ${px}px ${UI_FONT}`; }
+  const tw = x.measureText(text).width, left = (w - tw - badgeW) / 2;
+  if (deckBadge) {
+    const bx = left, by = h / 2 - 15;
+    x.fillStyle = 'rgba(0,0,0,.65)'; x.fillRect(bx - 3, by - 3, 26, 36);
+    x.fillStyle = '#f4efe2'; x.fillRect(bx, by, 20, 30);
+    x.fillStyle = '#b3261e'; x.fillRect(bx + 3, by + 3, 14, 24);
+    x.fillStyle = '#f4efe2'; x.fillRect(bx + 6, by + 6, 8, 18);
+  }
+  const cx = left + badgeW + tw / 2;
+  x.lineWidth = 6; x.strokeStyle = 'rgba(0,0,0,.65)'; x.strokeText(text, cx, h / 2); x.fillStyle = color; x.fillText(text, cx, h / 2);
   return canvasTexture(c);
 }
 
 export function makeTextSprite(text: string, color: string) {
   const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: textTexture(text, color), transparent: true, depthTest: false, toneMapped: false }));
   sp.scale.set(0.5, 0.125, 1); return sp;
+}
+
+/** A dica sobre uma carta da mesa (quem jogou, em que vaza): um sprite só, que troca de texto quando a mira muda de carta. */
+export interface Tip { sprite: THREE.Sprite; text: string }
+export function makeTip(): Tip {
+  const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ transparent: true, depthTest: false, toneMapped: false }));
+  sprite.scale.set(0.42, 0.105, 1); sprite.visible = false;
+  return { sprite, text: '' };
+}
+export function showTip(tip: Tip, text: string | null, at?: THREE.Vector3) {
+  if (!text || !at) { tip.sprite.visible = false; return; }
+  if (text !== tip.text) {
+    tip.text = text;
+    const mat = tip.sprite.material as THREE.SpriteMaterial;
+    mat.map?.dispose(); mat.map = textTexture(text, TIP_COLOR, 34, 320, 64); mat.needsUpdate = true;
+  }
+  tip.sprite.position.copy(at).y += 0.11; tip.sprite.visible = true;
 }
 
 /** Balão de fala + boca mexendo. */
@@ -108,8 +160,14 @@ export function ghostOpacity(gh: Ghost, connected: boolean) {
 }
 
 /* ---------- cartas ---------- */
-/** `known`: a pessoa sabe que carta é (vê a face); senão as duas faces mostram as costas. `face`/`back` vêm do cenário (`dressCards`). */
-export interface CardData { tp: THREE.Vector3; tq: THREE.Quaternion; b: number; tb: number; known: boolean; front: THREE.Mesh; face: THREE.Texture | null; back: THREE.Texture | null }
+/**
+ * `known`: a pessoa sabe que carta é (vê a face); senão as duas faces mostram as costas. `face`/`back` vêm do cenário (`dressCards`).
+ * `tp`/`tq` é onde a carta vai parar; `path` são os trechos que ela percorre até lá, no tempo (ver `tween.ts`).
+ */
+export interface CardData {
+  tp: THREE.Vector3; tq: THREE.Quaternion; b: number; tb: number; known: boolean; front: THREE.Mesh; face: THREE.Texture | null; back: THREE.Texture | null;
+  path: Segment[];
+}
 export type CardGroup = THREE.Group & { userData: CardData & { id: CardId } };
 
 /** As 40 cartas físicas, ainda sem desenho: o cenário veste com `dressCards`. */
@@ -121,7 +179,7 @@ export function buildCards(): Record<CardId, CardGroup> {
     const rear = new THREE.Mesh(new THREE.PlaneGeometry(CARD_W, CARD_H), new THREE.MeshStandardMaterial({ roughness: 0.7, metalness: 0 }));
     rear.rotation.y = Math.PI; front.castShadow = true;
     g.add(front, rear);
-    g.userData = { id, tp: new THREE.Vector3(0.6, TABLE_TOP, -0.6), tq: new THREE.Quaternion(), b: 1, tb: 1, known: true, front, face: null, back: null };
+    g.userData = { id, tp: new THREE.Vector3(0.6, TABLE_TOP, -0.6), tq: new THREE.Quaternion(), b: 1, tb: 1, known: true, front, face: null, back: null, path: [] };
     g.position.copy(g.userData.tp);
     out[id] = g;
   }

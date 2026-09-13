@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import type { GameEvent } from '@truco/rules';
-import { formatEvent, renderLine, withHint, type LogLine } from '../src/lib/format';
+import { closesTrick, formatEvent, opensHand, renderHandHead, renderLine, withHint, type LogLine } from '../src/lib/format';
 import { HintBook } from '../src/lib/i18n';
 import { emptySnapshot, type TableSnapshot } from '../src/lib/table/table';
 
@@ -10,9 +10,11 @@ function snap(): TableSnapshot {
 }
 const raise: GameEvent = { type: 'raise', seat: 3, to: 4 };
 const decline: GameEvent = { type: 'respond', seat: 0, action: 'decline', value: 2, winnerTeam: 1 };
-const dezHand: GameEvent = { type: 'newHand', mao: 1, special: 'dez', value: 4, decider: 1 };
-const ferroHand: GameEvent = { type: 'newHand', mao: 1, special: 'ferro', value: 4, decider: null };
+const dezHand: GameEvent = { type: 'newHand', mao: 1, special: 'dez', value: 4, decider: 1, dealer: 0, cutter: 2 };
+const ferroHand: GameEvent = { type: 'newHand', mao: 1, special: 'ferro', value: 4, decider: null, dealer: 0, cutter: 2 };
 const play: GameEvent = { type: 'play', seat: 2, id: '4c', covered: false, kind: 'kill', seed: 1 };
+/** a mão nova como o motor a anuncia: com quem carteia e quem corta (contrato do motor) */
+const newHand: GameEvent = { type: 'newHand', mao: 1, special: 'normal', value: 2, decider: null, dealer: 0, cutter: 2 };
 const line = (e: GameEvent) => formatEvent(e, snap())!;
 
 describe('formatEvent', () => {
@@ -74,6 +76,35 @@ describe('withHint', () => {
     const l = withHint(line(raise), 'en', new HintBook(null));
     expect(renderLine('en', l).hint).toBeDefined();
     expect(renderLine('pt', l).hint).toBeUndefined();
+  });
+});
+
+describe('mão nova', () => {
+  test('a linha diz quem carteia e quem é mão, nas duas línguas', () => {
+    expect(renderLine('pt', line(newHand)).text).toBe('Mão nova: Ana carteia, Tião é mão.');
+    expect(renderLine('en', line(newHand)).text).toBe('New hand: Ana deals, Tião opens.');
+  });
+
+  test('sem carteador no evento, a linha só diz quem é mão', () => {
+    const { dealer: _d, cutter: _c, ...old } = newHand as Extract<GameEvent, { type: 'newHand' }>;
+    expect(renderLine('pt', line(old as GameEvent)).text).toBe('Nova mão. Tião é o mão.');
+  });
+
+  test('o log abre a mão com um cabeçalho: número, valor e quem carteia', () => {
+    const l = line(newHand);
+    expect(opensHand(l)).toBe(true);
+    expect(opensHand(line(play))).toBe(false);
+    expect(renderHandHead('pt', l)).toBe('Mão 1 · vale 2 · carteia Ana');
+    expect(renderHandHead('en', l)).toBe('Hand 1 · worth 2 · Ana deals');
+    expect(opensHand(line(dezHand))).toBe(true);
+    expect(opensHand(line(ferroHand))).toBe(true);
+    expect(renderHandHead('pt', line(dezHand))).toBe('Mão 1 · vale 4 · carteia Ana');
+  });
+
+  test('a vaza fechada deixa um traço depois da linha que a conta', () => {
+    expect(closesTrick(line({ type: 'trick', n: 1, winner: 0, bestSeat: 0 }))).toBe(true);
+    expect(closesTrick(line({ type: 'trick', n: 2, winner: null, bestSeat: null }))).toBe(true);
+    expect(closesTrick(line(play))).toBe(false);
   });
 });
 

@@ -23,7 +23,7 @@ function gazePoint(c: Character, now: number, x: GazeCtx): THREE.Vector3 {
   const speaker = x.chars.find((o) => o.bubble.visible && o !== c);
   if (speaker) return eyesWorld(speaker);
   if (x.acting >= 0 && x.acting !== c.seat) return eyesWorld(x.chars[x.acting]);
-  if (x.acting === c.seat) return seatDir(c.seat).multiplyScalar(0.8).setY(TABLE_TOP + 0.15);
+  if (x.acting === c.seat) return seatDir(c.seat).multiplyScalar(c.lifted ? 1.03 : 1.1).setY(c.lifted ? 1.18 : TABLE_TOP + 0.1); // as próprias cartas: levantadas diante do rosto, ou na mão junto à mesa
   return new THREE.Vector3(0, TABLE_TOP, 0);
 }
 

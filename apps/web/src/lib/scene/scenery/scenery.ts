@@ -34,6 +34,8 @@ export interface Scenery {
   deck: DeckArt;
   /** por quadro: chamas, bichos, fumaça, luzes que piscam. `t` em segundos desde o começo, `dt` desde o quadro anterior */
   update(t: number, dt: number): void;
+  /** um lance da mesa ('raise' quando alguém truca): o que vive no cenário reage, se quiser; opcional */
+  react?(kind: string): void;
   /** solta geometrias, materiais e texturas */
   dispose(): void;
 }

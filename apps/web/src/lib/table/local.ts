@@ -1,33 +1,39 @@
 import {
-  canRaise, chooseBotDez, chooseBotPlay, chooseBotResponse, coverAllowed, createGame, decideDez, playCard, raise,
-  respond, startHand, takeEvents, viewFor,
+  canRaise, chooseBotDez, chooseBotPlay, chooseBotResponse, coverAllowed, createGame, decideDez, handUntouched, playCard, raise,
+  respond, startHand, takeEvents, thinkTime, viewFor,
   type CardId, type DezAction, type GameEvent, type GameState, type RespondAction, type Rng, type Rules, type Seat,
 } from '@truco/rules';
-import { DEFAULT_SCENERY, DEFAULT_TEAM_NAMES, type SceneryId } from '@truco/protocol';
+import { DEAL_MS, DEFAULT_SCENERY, DEFAULT_TEAM_NAMES, type SceneryId } from '@truco/protocol';
 import { realClock, type Clock } from './clock';
-import { actingFor, type Table, type TableListener, type TableSnapshot } from './table';
+import { actingFor, type SeatView, type Table, type TableListener, type TableSnapshot } from './table';
 
 /**
- * Lidas ao vivo: regras aplicam na próxima mão, bots e ritmo na próxima ação; `you` (o nome da cadeira 0) e `teams` (os nomes
- * das duplas), na língua da pessoa, no próximo snapshot. Sem eles, os nomes em português.
+ * Lidas ao vivo: regras aplicam na próxima mão, bots e ritmo na próxima ação; `you` (o nome da cadeira da pessoa) e `teams`
+ * (os nomes das duplas), na língua da pessoa, no próximo snapshot. Sem eles, os nomes em português. `botPace` multiplica o
+ * que um bot pensa (`thinkTime`: 0.5 rápido, 1 normal, 2 devagar); a coreografia de dar as cartas (`DEAL_MS`) não muda.
+ * `watch`: a pessoa é um fantasma numa mesa de quatro bots e vê todas as cartas; senta no lugar de um bot entre mãos
+ * (`takeBotSeat`); vale na próxima partida.
  */
-export interface LocalSettings { rules: Rules; bots: boolean; botDelay: number; you?: string; teams?: [string, string]; scenery?: SceneryId }
+export interface LocalSettings { rules: Rules; bots: boolean; botPace: number; you?: string; teams?: [string, string]; scenery?: SceneryId; watch?: boolean }
 
-/** Quem senta na mesa offline: a pessoa na cadeira 0 e três bots. */
+/** Quem senta na mesa offline sem bots (modo debug): a pessoa na cadeira 0 e três nomes. */
 export const LOCAL_NAMES = ['Você', 'Tião', 'Dita', 'Zé'] as const;
+/** O bot de cada cadeira: a cadeira 0 só é de um bot quando a pessoa assiste. */
+export const LOCAL_BOT_NAMES = ['Nena', 'Tião', 'Dita', 'Zé'] as const;
 
 /** Pausa entre o fim de uma mão e a seguinte, ms. */
 export const HAND_PAUSE = 2200;
-/** Bots "pensam" um pouco mais antes de responder truco ou decidir a mão de dez. */
-const DECISION_EXTRA = 300;
 
 /**
- * A mesa offline: motor e bots no navegador. Com bots, a pessoa é a cadeira 0;
- * sem bots (modo debug), a cadeira local segue quem tem de agir.
+ * A mesa offline: motor e bots no navegador. Com bots, a pessoa é a cadeira 0, ou um fantasma que assiste quatro bots
+ * (`watch`) até sentar no lugar de um deles; sem bots (modo debug), a cadeira local segue quem tem de agir.
  */
 export class LocalTable implements Table {
   private game: GameState;
-  private seat: Seat = 0;
+  /** a cadeira que a pessoa controla; null = fantasma */
+  private seat: Seat | null;
+  /** a cadeira de bot em que o fantasma quer sentar quando a mão acabar */
+  private wanted: Seat | null = null;
   private coverNext = false;
   private scenery: SceneryId;
   private snap: TableSnapshot;
@@ -41,26 +47,32 @@ export class LocalTable implements Table {
     this.clock = opts.clock ?? realClock;
     this.scenery = settings.scenery ?? DEFAULT_SCENERY;
     this.game = createGame(settings.rules);
+    this.seat = this.startingSeat();
     this.snap = this.takeSnapshot();
   }
 
   get snapshot() { return this.snap; }
+  /** a cadeira de bot em que o fantasma vai sentar quando a mão acabar; null = nenhuma */
+  get wantsSeat() { return this.wanted; }
 
+  /** Uma partida do zero; quem assiste volta a ser fantasma, quem joga volta à cadeira 0. */
   newGame() {
     this.clearTimer();
     this.game = createGame(this.settings.rules);
+    this.seat = this.startingSeat();
+    this.wanted = null;
     this.newHand();
   }
 
   play(id: CardId, covered = this.coverNext) {
-    if (!playCard(this.game, this.seat, id, covered, this.rng)) return;
+    if (this.seat === null || !playCard(this.game, this.seat, id, covered, this.rng)) return;
     this.coverNext = false;
     this.afterAction();
   }
-  raise() { if (raise(this.game, this.seat)) this.afterAction(); }
-  respond(action: RespondAction) { if (respond(this.game, this.seat, action)) this.afterAction(); }
+  raise() { if (this.seat !== null && raise(this.game, this.seat)) this.afterAction(); }
+  respond(action: RespondAction) { if (this.seat !== null && respond(this.game, this.seat, action)) this.afterAction(); }
   decideDez(action: DezAction) {
-    if (this.acting() !== this.seat) return;
+    if (this.seat === null || this.acting() !== this.seat) return;
     if (decideDez(this.game, action)) this.afterAction();
   }
   toggleCover() {
@@ -84,6 +96,28 @@ export class LocalTable implements Table {
     this.publish([]);
   }
 
+  /**
+   * O fantasma senta no lugar do bot da cadeira `seat`: sem mão ou na pausa entre mãos, na hora (a pausa em curso não
+   * recomeça); no meio de uma mão, fica como intenção e senta quando ela acabar. `null` desiste. Quem já senta, uma
+   * cadeira que não é de bot, ou o fim de jogo: nada muda.
+   */
+  takeBotSeat(seat: Seat | null) {
+    if (seat === null || this.seat !== null || !this.isBot(seat) || this.game.over) {
+      if (this.wanted !== null) { this.wanted = null; this.publish([]); }
+      return;
+    }
+    const h = this.game.hand;
+    if (!h || h.phase === 'over') { this.sit(seat); return; }
+    if (this.wanted !== seat) { this.wanted = seat; this.publish([]); }
+  }
+
+  private sit(seat: Seat) {
+    this.seat = seat;
+    this.wanted = null;
+    this.coverNext = false;
+    this.publish([]);
+  }
+
   private newHand() {
     this.clearTimer();
     startHand(this.game, this.rng, { rules: this.settings.rules });
@@ -93,6 +127,11 @@ export class LocalTable implements Table {
 
   private afterAction() {
     const events = takeEvents(this.game);
+    // a intenção de sentar vai quando a mão acaba (ou cai se já não vale)
+    if (this.wanted !== null && this.game.hand?.phase === 'over') {
+      if (this.seat === null && this.isBot(this.wanted) && !this.game.over) { this.seat = this.wanted; this.coverNext = false; }
+      this.wanted = null;
+    }
     this.schedule();
     this.publish(events);
   }
@@ -103,19 +142,31 @@ export class LocalTable implements Table {
   }
 
   private takeSnapshot(): TableSnapshot {
+    const seat = this.seat;
+    const seats: SeatView[] = [0, 1, 2, 3].map((s) => ({ name: this.nameOf(s as Seat), bot: this.isBot(s as Seat), botControlled: false }));
     return {
-      game: viewFor(this.game, this.settings.bots ? 0 : 'all'), seat: this.seat, acting: this.acting(), coverNext: this.coverNext,
-      seats: LOCAL_NAMES.map((name, s) => ({ name: s === 0 ? this.settings.you ?? name : name, bot: this.settings.bots && s !== 0, botControlled: false })), teams: this.settings.teams ?? [...DEFAULT_TEAM_NAMES], ghosts: [],
-      canRaise: canRaise(this.game, this.seat), canCover: coverAllowed(this.game), rulesEditable: true, restart: 'newGame', scenery: this.scenery,
+      game: viewFor(this.game, this.settings.bots && seat !== null ? seat : 'all'), seat, acting: this.acting(), coverNext: this.coverNext,
+      seats, teams: this.settings.teams ?? [...DEFAULT_TEAM_NAMES], ghosts: [],
+      canRaise: seat !== null && canRaise(this.game, seat), canCover: coverAllowed(this.game), rulesEditable: true, restart: 'newGame', scenery: this.scenery,
     };
   }
 
-  private humanControls(s: Seat) { return !this.settings.bots || s === 0; }
+  /** Com bots, a pessoa começa fantasma (assistindo) ou na cadeira 0; sem bots, a cadeira segue quem age (ver `schedule`). */
+  private startingSeat(): Seat | null { return this.settings.bots && this.settings.watch ? null : 0; }
+  private isBot(s: Seat) { return this.settings.bots && s !== this.seat; }
+  private nameOf(s: Seat) {
+    if (s === this.seat) return this.settings.you ?? LOCAL_NAMES[0];
+    return this.settings.bots ? LOCAL_BOT_NAMES[s] : LOCAL_NAMES[s];
+  }
+  private humanControls(s: Seat) { return !this.settings.bots || s === this.seat; }
 
-  /** Com bots, a pessoa responde pela própria dupla mesmo quando o parceiro seria o pé; sem bots, a cadeira local segue quem age. */
-  private acting(): Seat | -1 { return actingFor(this.game, this.settings.bots ? 0 : null); }
+  /** Com bots, a pessoa responde pela própria dupla mesmo quando o parceiro seria o pé; fantasma e mesa sem bots seguem quem age. */
+  private acting(): Seat | -1 { return actingFor(this.game, this.settings.bots ? this.seat : null); }
 
-  /** Pessoa espera o teclado; bot age depois de um delay; mão encerrada espera a pausa. */
+  /**
+   * Pessoa espera o teclado; bot pensa (`thinkTime` vezes o ritmo) e, na primeira ação de cada mão, espera antes a
+   * coreografia de dar as cartas (`DEAL_MS`); mão encerrada espera a pausa.
+   */
   private schedule() {
     this.clearTimer();
     const h = this.game.hand; if (!h) return;
@@ -124,10 +175,10 @@ export class LocalTable implements Table {
       return;
     }
     const a = this.acting() as Seat;
-    this.seat = this.settings.bots ? 0 : a; // sem bots a pessoa segue quem age; com bots ela é sempre a 0
+    if (!this.settings.bots) this.seat = a; // sem bots a pessoa segue quem age
     if (this.humanControls(a)) return;
-    const delay = h.phase === 'play' ? this.settings.botDelay : this.settings.botDelay + DECISION_EXTRA;
-    this.timer = this.clock.setTimeout(() => this.botAct(a), delay);
+    const think = Math.round(thinkTime(this.rng, h.phase === 'play' ? 'play' : 'decision') * this.settings.botPace);
+    this.timer = this.clock.setTimeout(() => this.botAct(a), (handUntouched(this.game) ? DEAL_MS : 0) + think);
   }
 
   private botAct(seat: Seat) {

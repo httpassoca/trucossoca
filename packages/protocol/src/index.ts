@@ -17,6 +17,11 @@ export const SOCKET_IDLE_TIMEOUT = 30_000;
 export const IDLE_HANDOFF = 60_000;
 /** Presença (posição e olhar) sai do cliente e é repassada pelo servidor no máximo uma vez por este intervalo, por pessoa. */
 export const PRESENCE_INTERVAL = 100;
+/**
+ * Quanto toda tela leva para embaralhar, cortar e dar as cartas depois do `newHand`, ms. A coreografia tem tamanho fixo
+ * e igual em todo cliente; os bots (no servidor e na mesa local) só agem depois dela, na primeira ação de cada mão.
+ */
+export const DEAL_MS = 4500;
 /** Até onde uma presença pode estar do centro da mesa, em metros, em cada eixo; e o máximo de um ângulo, em radianos (o cliente manda entre -π e π, ou perto). */
 const PRESENCE_RANGE = 30, PRESENCE_HEIGHT_RANGE = 10, PRESENCE_ANGLE_RANGE = 4 * Math.PI;
 /** Cenários: o lugar ao redor da mesa, escolhido por sala no lobby; o bar de esquina é o padrão. */
@@ -31,8 +36,11 @@ export const CLOSE_ROOM_NOT_FOUND = 4404;
 export const CLOSE_ROOM_ENDED = 4410;
 export const CLOSE_REPLACED = 4409;
 
-/** Onde alguém está na mesa (x, z no chão) e para onde olha (yaw, pitch da câmera, em radianos). */
-export interface Presence { x: number; y: number; z: number; yaw: number; pitch: number }
+/**
+ * Onde alguém está na mesa (x, z no chão, y a altura) e para onde olha (yaw, pitch da câmera, em radianos).
+ * `peek`: a pessoa está levantando as cartas para olhá-las (ausente = não); as outras telas levantam as do boneco dela.
+ */
+export interface Presence { x: number; y: number; z: number; yaw: number; pitch: number; peek?: boolean }
 
 // cliente → servidor
 export type ClientMessage =
@@ -158,17 +166,22 @@ export function parseClientMessage(raw: unknown): ClientMessage | null {
 }
 
 const isTeam = (v: unknown): v is Team => v === 0 || v === 1;
-const isScenery = (v: unknown): v is SceneryId => typeof v === 'string' && (SCENERIES as string[]).includes(v);
+/** Um id de cenário da lista (o servidor valida o que chega por HTTP com isto também). */
+export const isScenery = (v: unknown): v is SceneryId => typeof v === 'string' && (SCENERIES as string[]).includes(v);
 const isSeat = (v: unknown): v is Seat => v === 0 || v === 1 || v === 2 || v === 3;
 const isNum = (v: unknown, range: number): v is number => typeof v === 'number' && Number.isFinite(v) && Math.abs(v) <= range;
 
-/** Presença vinda do cliente: cinco números finitos, a posição dentro da mesa (a altura, entre um degrau abaixo do chão e um pulo). */
+/**
+ * Presença vinda do cliente: cinco números finitos, a posição dentro da mesa (a altura, entre um degrau abaixo do chão
+ * e um pulo), e `peek` ausente ou booleano (só vai adiante quando é true).
+ */
 function parsePresence(raw: unknown): Presence | null {
   if (!raw || typeof raw !== 'object') return null;
   const p = raw as Record<string, unknown>;
   if (!isNum(p.x, PRESENCE_RANGE) || !isNum(p.z, PRESENCE_RANGE) || !isNum(p.yaw, PRESENCE_ANGLE_RANGE) || !isNum(p.pitch, PRESENCE_ANGLE_RANGE)) return null;
   if (!isNum(p.y, PRESENCE_HEIGHT_RANGE) || p.y < -1) return null;
-  return { x: p.x, y: p.y, z: p.z, yaw: p.yaw, pitch: p.pitch };
+  if (p.peek !== undefined && typeof p.peek !== 'boolean') return null;
+  return { x: p.x, y: p.y, z: p.z, yaw: p.yaw, pitch: p.pitch, ...(p.peek === true ? { peek: true } : {}) };
 }
 const isCardId = (v: unknown): v is CardId => typeof v === 'string' && v.length === 2 && (RANKS as string[]).includes(v[0]) && v[1] in SUITS;
 const isInt = (v: unknown, min: number, max: number): v is number => typeof v === 'number' && Number.isInteger(v) && v >= min && v <= max;

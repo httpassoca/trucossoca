@@ -20,7 +20,7 @@ class Pipe {
   private readonly silences = new Map<PipeSocket, { handle: unknown; heardAt: number }>();
   private readonly rng = seeded(11);
   constructor(private readonly clock: ManualClock) {
-    this.state = createRoom('ABCD', clock.now, { botDelay: 50, handPause: 100 });
+    this.state = createRoom('ABCD', clock.now, { think: 0.05, handPause: 100, deal: 50 });
     this.syncTimers();
   }
   open(url: string): SocketLike {
@@ -86,11 +86,18 @@ class PipeSocket implements SocketLike {
   get errors() { return this.received.filter((m) => m.type === 'error'); }
 }
 
-/** Uma pessoa na cadeira: joga a primeira carta (trucando na 1ª vaza quando pode), aceita truco, joga a mão de dez. */
+/**
+ * Uma pessoa na cadeira: joga a primeira carta (trucando na 1ª vaza quando pode), aceita truco, joga a mão de dez.
+ * Age uma vez por vez: dois snapshots no mesmo instante (o primeiro ouvinte recebe na hora o que ninguém ouviu) não
+ * mandam a mesma jogada duas vezes.
+ */
 function person(table: Table, clock: ManualClock) {
+  let pending = false;
   const check = (snap: TableSnapshot) => {
-    if (!snap.game.hand || snap.game.over || snap.acting !== snap.seat) return;
+    if (pending || !snap.game.hand || snap.game.over || snap.acting !== snap.seat) return;
+    pending = true;
     clock.setTimeout(() => {
+      pending = false;
       const s = table.snapshot, h = s.game.hand!;
       if (s.acting !== s.seat || h.phase === 'over') return;
       if (h.phase === 'dezDecision') table.decideDez('play');
@@ -155,7 +162,7 @@ describe('partida online pelo cano: RemoteTable ↔ sala', () => {
     // em nenhum snapshot alguém recebeu as cartas de outra cadeira (fora as do parceiro na decisão da mão de dez)
     for (const [m, seat] of [[ze, 0], [dita, 1]] as [typeof ze, Seat][]) {
       const snaps = m.socket.snapshots.filter((s: RoomSnapshot) => s.game?.hand);
-      expect(snaps.length).toBeGreaterThan(30);
+      expect(snaps.length).toBeGreaterThan(15);
       for (const snap of snaps) {
         const h = snap.game!.hand!;
         for (const other of [0, 1, 2, 3] as Seat[]) {

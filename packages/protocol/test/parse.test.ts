@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import { defaultRules } from '@truco/rules';
-import { NICKNAME_MAX, parseClientMessage, TEAM_NAME_MAX } from '../src/index';
+import { DEAL_MS, isScenery, NICKNAME_MAX, parseClientMessage, TEAM_NAME_MAX } from '../src/index';
 
 describe('parseClientMessage', () => {
   test('aceita join, nickname e ping', () => {
@@ -37,6 +37,13 @@ describe('parseClientMessage', () => {
   test('cenário fora da lista é rejeitado', () => {
     expect(parseClientMessage(JSON.stringify({ type: 'scenery', scenery: 'lua' }))).toBeNull();
     expect(parseClientMessage(JSON.stringify({ type: 'scenery' }))).toBeNull();
+    expect(isScenery('graveyard')).toBe(true);
+    expect(isScenery('lua')).toBe(false);
+    expect(isScenery(undefined)).toBe(false);
+  });
+
+  test('a coreografia de dar as cartas tem um tamanho fixo, em ms', () => {
+    expect(DEAL_MS).toBe(4500);
   });
 
   test('dupla fora de 0/1, nome de dupla comprido demais ou toggle sem booleano são rejeitados', () => {
@@ -100,6 +107,15 @@ describe('parseClientMessage: fantasmas', () => {
     expect(parseClientMessage(JSON.stringify({ type: 'presence', presence: { x: '1', y: 0, z: 2, yaw: 0, pitch: 0 } }))).toBeNull();
     expect(parseClientMessage(JSON.stringify({ type: 'presence', presence: { x: 1e9, y: 0, z: 2, yaw: 0, pitch: 0 } }))).toBeNull();
     expect(parseClientMessage(JSON.stringify({ type: 'presence' }))).toBeNull();
+  });
+
+  test('a presença pode dizer que a pessoa está olhando as cartas: ausente = não; fora de booleano é rejeitada', () => {
+    const base = { x: 1, y: 0, z: 2, yaw: 0, pitch: 0 };
+    expect(parseClientMessage(JSON.stringify({ type: 'presence', presence: { ...base, peek: true } }))).toEqual({ type: 'presence', presence: { ...base, peek: true } });
+    expect(parseClientMessage(JSON.stringify({ type: 'presence', presence: { ...base, peek: false } }))).toEqual({ type: 'presence', presence: base });
+    expect(parseClientMessage(JSON.stringify({ type: 'presence', presence: base }))).toEqual({ type: 'presence', presence: base });
+    expect(parseClientMessage(JSON.stringify({ type: 'presence', presence: { ...base, peek: 'sim' } }))).toBeNull();
+    expect(parseClientMessage(JSON.stringify({ type: 'presence', presence: { ...base, peek: 1 } }))).toBeNull();
   });
 
   test('sentar no lugar de um bot leva a cadeira', () => {

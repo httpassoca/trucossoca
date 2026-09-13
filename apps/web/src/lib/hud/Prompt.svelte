@@ -1,15 +1,16 @@
 <script lang="ts">
-  import { promptAct, promptOf } from '../controller';
+  import { canRaiseMore, promptAct, promptOf } from '../controller';
   import { callName } from '../format';
   import { t } from '../i18n.svelte';
   import { live } from '../state.svelte';
   import Kbd from './Kbd.svelte';
 
+  /** A pergunta da mesa a esta pessoa (truco, mão de dez, fim de jogo): um cartão no terço de baixo com uma fila de botões cheios. */
   const snap = $derived(live.snap);
   const game = $derived(snap.game);
   const p = $derived(promptOf(snap));
   const q = $derived(game.hand?.pending ?? null);
-  const more = $derived(q && q.toIdx + 1 < game.rules.ladder.length ? callName(game.rules.ladder[q.toIdx + 1]).replace('!', '') : null);
+  const more = $derived(q && canRaiseMore(snap) ? callName(game.rules.ladder[q.toIdx + 1]).replace('!', '') : null);
 </script>
 
 {#if p}
@@ -20,7 +21,7 @@
         <p class="tm-text">{t('prompt.respondText', { to: q.to, from: q.from })}</p>
         <div class="tm-row">
           <button class="ss-btn primary" type="button" onclick={() => promptAct('accept')}>{t('prompt.accept')} <Kbd keys={['↵']} /></button>
-          <button class="ss-btn" type="button" onclick={() => promptAct('decline')}>{t('prompt.decline')} <Kbd keys={['X']} /></button>
+          <button class="ss-btn tm-filled" type="button" onclick={() => promptAct('decline')}>{t('prompt.decline')} <Kbd keys={['X']} /></button>
           {#if more}<button class="ss-btn danger" type="button" onclick={() => promptAct('raise')}>{t('prompt.raise', { call: more })} <Kbd keys={['R']} /></button>{/if}
         </div>
       {:else if p.kind === 'dez'}
@@ -28,7 +29,7 @@
         <p class="tm-text">{game.rules.maoDeDezPeek ? t('prompt.dezPeek') : ''}{t('prompt.dezText', { value: game.hand!.value })}</p>
         <div class="tm-row">
           <button class="ss-btn primary" type="button" onclick={() => promptAct('play')}>{t('prompt.play')} <Kbd keys={['↵']} /></button>
-          <button class="ss-btn" type="button" onclick={() => promptAct('run')}>{t('prompt.decline')} <Kbd keys={['X']} /></button>
+          <button class="ss-btn tm-filled" type="button" onclick={() => promptAct('run')}>{t('prompt.decline')} <Kbd keys={['X']} /></button>
         </div>
       {:else if p.kind === 'over'}
         <h3 class="tm-title">{t('prompt.over', { team: snap.teams[game.winner!] })}</h3>

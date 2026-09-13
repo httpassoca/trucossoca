@@ -103,6 +103,17 @@ export function nearSeat(seat: Seat) {
   return Math.hypot(walk.x - d.x, walk.z - d.z) < SIT_RANGE;
 }
 
+/** Fantasma perto da cadeira de um bot (`bots[s]`): a mais próxima ao alcance, ou -1. */
+export function nearBotSeat(bots: boolean[]): Seat | -1 {
+  let best: Seat | -1 = -1, bestD = SIT_RANGE;
+  for (let s = 0 as Seat; s < 4; s = (s + 1) as Seat) {
+    if (!bots[s]) continue;
+    const d = seatDir(s).multiplyScalar(SEAT_R), dist = Math.hypot(walk.x - d.x, walk.z - d.z);
+    if (dist < bestD) { best = s; bestD = dist; }
+  }
+  return best;
+}
+
 /** Senta de novo: o olhar volta a ser relativo à cadeira. */
 export function sitDown() {
   stance.standing = false;

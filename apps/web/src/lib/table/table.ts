@@ -60,6 +60,12 @@ export interface Table {
   presenceOf(who: Seat | string): Presence | undefined;
   /** troca o cenário: offline na hora; online pede à sala (só vale no lobby) */
   setScenery(scenery: SceneryId): void;
+  /**
+   * Fantasma senta no lugar do bot da cadeira `seat` e passa a jogar por ela: entre mãos vai na hora; no meio de uma
+   * mão fica como intenção e vai quando a mão acabar. `null` desiste. Quem já senta, ou pede uma cadeira que não é de
+   * bot, não muda nada.
+   */
+  takeBotSeat(seat: Seat | null): void;
 }
 
 /**

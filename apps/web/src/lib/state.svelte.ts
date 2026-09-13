@@ -1,5 +1,6 @@
-import { defaultRules, type Rules, type Seat } from '@truco/rules';
+import type { Rules, Seat } from '@truco/rules';
 import type { LogLine } from './format';
+import { rememberedRules, rememberRules } from './identity';
 import { emptySnapshot, type Table, type TableSnapshot } from './table/table';
 
 export type Prompt = { kind: 'respond' } | { kind: 'dez' } | { kind: 'over' } | null;
@@ -12,11 +13,17 @@ export const ui = $state({
   locked: false,          // pointer lock ativo
   standing: false,        // espelho reativo da postura (camera.ts): a pessoa sentada se levantou
   nearSeat: false,        // de pé e perto da própria cadeira: Shift senta
+  nearBotSeat: -1 as Seat | -1, // fantasma perto da cadeira de um bot: Shift senta no lugar dele (entre mãos)
+  peek: false,            // segurando a tecla de olhar as cartas: elas sobem diante do rosto
+  dealing: false,         // a coreografia de dar as cartas corre: as teclas de jogo esperam
   log: [] as LogLine[],
-  rules: { ...defaultRules } as Rules, // offline: aplicadas na próxima mão
+  rules: rememberedRules(), // as regras da pessoa: início, offline (aplicam na próxima mão) e a sala que ela abre
   bots: true,
-  botDelay: 800,
+  botPace: 1,             // ritmo dos bots offline: 0.5 rápido, 1 normal, 2 lento
 });
+
+/** Troca as regras da pessoa e deixa lembradas no navegador. */
+export function setRules(rules: Rules) { ui.rules = rules; rememberRules(rules); }
 
 /**
  * A mesa por trás da interface (ADR 0003): local ou remota, encaixada pela tela via `attachTable`.

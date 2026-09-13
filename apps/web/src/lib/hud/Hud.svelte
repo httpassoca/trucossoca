@@ -6,7 +6,6 @@
   import Menu from './Menu.svelte';
   import Prompt from './Prompt.svelte';
   import Score from './Score.svelte';
-  import Seats from './Seats.svelte';
 
   /** `room`: a seção da sala no menu, quando há uma sala (online) */
   let { room }: { room?: Snippet } = $props();
@@ -14,7 +13,6 @@
 
 <div id="hud">
   <Score />
-  <Seats />
   <Prompt />
   <Keys />
   <Log />
