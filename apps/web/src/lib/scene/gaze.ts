@@ -1,4 +1,4 @@
-import type { CardId, GameState, Seat } from '@truco/rules';
+import type { CardId, GameView, Seat } from '@truco/rules';
 import * as THREE from 'three';
 import { HEAD_Y, seatDir, TABLE_TOP, type CardGroup, type Character } from './builders';
 
@@ -6,7 +6,7 @@ const _v = new THREE.Vector3();
 export const headWorld = (c: Character) => c.g.localToWorld(new THREE.Vector3(0, HEAD_Y, 0));
 
 export interface GazeCtx {
-  game: GameState; view: Seat; camera: THREE.Camera; chars: Character[];
+  game: GameView; view: Seat; camera: THREE.Camera; chars: Character[];
   cards: Record<CardId, CardGroup>; lastPlay: { id: CardId | null; t: number }; acting: Seat | -1;
 }
 

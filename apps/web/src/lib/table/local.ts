@@ -1,13 +1,17 @@
 import {
   canRaise, chooseBotDez, chooseBotPlay, chooseBotResponse, coverAllowed, createGame, decideDez, playCard, raise,
-  respond, responderSeat, startHand, takeEvents, teamOf,
+  respond, startHand, takeEvents, viewFor,
   type CardId, type DezAction, type GameEvent, type GameState, type RespondAction, type Rng, type Rules, type Seat,
 } from '@truco/rules';
+import { DEFAULT_TEAM_NAMES } from '@truco/protocol';
 import { realClock, type Clock } from './clock';
-import type { Table, TableListener, TableSnapshot } from './table';
+import { actingFor, type Table, type TableListener, type TableSnapshot } from './table';
 
 /** Lidas ao vivo: regras aplicam na próxima mão, bots e ritmo na próxima ação. */
 export interface LocalSettings { rules: Rules; bots: boolean; botDelay: number }
+
+/** Quem senta na mesa offline: a pessoa na cadeira 0 e três bots. */
+export const LOCAL_NAMES = ['Você', 'Tião', 'Dita', 'Zé'] as const;
 
 /** Pausa entre o fim de uma mão e a seguinte, ms. */
 export const HAND_PAUSE = 2200;
@@ -87,24 +91,16 @@ export class LocalTable implements Table {
 
   private takeSnapshot(): TableSnapshot {
     return {
-      game: structuredClone(this.game), seat: this.seat, acting: this.acting(), coverNext: this.coverNext,
-      canRaise: canRaise(this.game, this.seat), canCover: coverAllowed(this.game),
+      game: viewFor(this.game, 'all'), seat: this.seat, acting: this.acting(), coverNext: this.coverNext,
+      seats: LOCAL_NAMES.map((name, s) => ({ name, bot: this.settings.bots && s !== 0 })), teams: [...DEFAULT_TEAM_NAMES],
+      canRaise: canRaise(this.game, this.seat), canCover: coverAllowed(this.game), rulesEditable: true, canRestart: true,
     };
   }
 
   private humanControls(s: Seat) { return !this.settings.bots || s === 0; }
 
-  /** De quem a mesa espera a ação. Com bots, a pessoa responde pela própria dupla mesmo quando o parceiro seria o pé. */
-  private acting(): Seat | -1 {
-    const h = this.game.hand;
-    if (!h || this.game.over || h.phase === 'over') return -1;
-    if (h.phase === 'dezDecision') return h.decider === 0 ? 0 : 1; // a primeira cadeira da dupla que decide
-    if (h.phase === 'respond') {
-      const r = responderSeat(this.game);
-      return this.settings.bots && teamOf(r) === 0 ? 0 : r;
-    }
-    return h.turn;
-  }
+  /** Com bots, a pessoa responde pela própria dupla mesmo quando o parceiro seria o pé; sem bots, a cadeira local segue quem age. */
+  private acting(): Seat | -1 { return actingFor(this.game, this.settings.bots ? 0 : null); }
 
   /** Pessoa espera o teclado; bot age depois de um delay; mão encerrada espera a pausa. */
   private schedule() {

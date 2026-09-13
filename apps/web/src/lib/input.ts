@@ -1,6 +1,6 @@
 import { mayRaise, myTurn, promptAct, promptOf, setView } from './controller';
 import { look } from './scene/camera';
-import { live, table, ui } from './state.svelte';
+import { live, ui } from './state.svelte';
 
 let canvasEl: HTMLCanvasElement | null = null;
 export const isLocked = () => !!canvasEl && document.pointerLockElement === canvasEl;
@@ -40,7 +40,7 @@ export function onKey(e: KeyboardEvent) {
     return;
   }
   if (ui.menuOpen) { if (e.key === 'Enter') resume(); return; }
-  const snap = live.snap, h = snap.game.hand; if (!h) return;
+  const table = live.table, snap = live.snap, h = snap.game.hand; if (!table || !h) return;
   if (e.key === 'Tab') { e.preventDefault(); setView(((ui.view + 1) % 4) as 0 | 1 | 2 | 3); return; }
   const p = promptOf(snap);
   if (p) {
@@ -55,6 +55,7 @@ export function onKey(e: KeyboardEvent) {
   if (e.key === 'c' || e.key === 'C') { table.toggleCover(); return; }
   if (e.key === 't' || e.key === 'T') { if (mayRaise(snap, ui.view)) table.raise(); return; }
   if (!myTurn(snap, ui.view)) return;
-  if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); if (cards[ui.sel]) table.play(cards[ui.sel]); return; }
-  const n = parseInt(e.key); if (n >= 1 && n <= 3 && cards[n - 1]) table.play(cards[n - 1]);
+  const pick = (i: number) => { const id = cards[i]; if (id) table.play(id); };
+  if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); pick(ui.sel); return; }
+  const n = parseInt(e.key); if (n >= 1 && n <= 3) pick(n - 1);
 }

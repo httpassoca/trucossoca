@@ -45,10 +45,11 @@ export interface Pending {
 export type Phase = 'play' | 'respond' | 'dezDecision' | 'over';
 export type Special = 'normal' | 'dez' | 'ferro';
 
-export interface HandState {
-  /** cartas que cada cadeira segura */
-  cards: CardId[][];
-  stock: CardId[];
+/** Uma carta segurada como este observador a vê: o id, ou null quando está oculta. */
+export type CardSlot = CardId | null;
+
+/** O que a mão tem em comum entre o estado do motor e a visão parcial que chega do servidor. */
+export interface HandCore {
   played: Play[][];
   results: (Team | null)[];
   order: number;
@@ -64,6 +65,18 @@ export interface HandState {
   revealPartner: boolean;
 }
 
+export interface HandState extends HandCore {
+  /** cartas que cada cadeira segura */
+  cards: CardId[][];
+  stock: CardId[];
+}
+
+/** A mão como um observador a vê: cartas ocultas viram null e o monte vira só a contagem. */
+export interface HandView extends HandCore {
+  cards: CardSlot[][];
+  stock: number;
+}
+
 export type RespondAction = 'accept' | 'decline' | 'raise';
 export type DezAction = 'play' | 'run';
 
@@ -77,16 +90,27 @@ export type GameEvent =
   | { type: 'handEnd'; winner: Team | null; points: number; scores: [number, number] }
   | { type: 'gameOver'; winner: Team };
 
-export interface GameState {
+export interface GameCore {
   rules: Rules;
   scores: [number, number];
   mao: Seat;
   handNo: number;
-  hand: HandState | null;
   over: boolean;
   winner: Team | null;
+}
+
+export interface GameState extends GameCore {
+  hand: HandState | null;
   /** fila de eventos para a camada de apresentação drenar */
   events: GameEvent[];
 }
+
+/** A partida como um observador a vê (ver `viewFor`). É o que a interface e o snapshot da sala carregam. */
+export interface GameView extends GameCore {
+  hand: HandView | null;
+}
+
+/** O que os guardas do motor leem: serve tanto o estado inteiro quanto a visão parcial. */
+export type GameReadable = GameCore & { hand: HandCore | null };
 
 export type Rng = () => number;

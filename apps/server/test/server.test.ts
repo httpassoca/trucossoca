@@ -50,7 +50,7 @@ describe('servidor', () => {
     const { code } = (await (await fetch(`${base}/api/rooms`, { method: 'POST' })).json()) as { code: string };
     const a = new WebSocket(wsUrl(code, 'token-aaaaaaaa'));
     const first = await nextMessage(a);
-    expect(first).toEqual({ type: 'snapshot', snapshot: { code, members: [], you: null } });
+    expect(first).toMatchObject({ type: 'snapshot', snapshot: { code, phase: 'lobby', members: [], you: null, game: null } });
 
     a.send(JSON.stringify({ type: 'join', nickname: 'Zé' }));
     const joined = await nextMessage(a);
@@ -79,5 +79,33 @@ describe('servidor', () => {
     expect((snap as { snapshot: RoomSnapshot }).snapshot.you).toBe('m1');
     expect(app.rooms.get(code)!.connections).toBe(1);
     a2.close();
+  });
+
+  test('duas abas sentam, uma começa, e cada uma recebe a mesa só com as próprias cartas', async () => {
+    const { code } = (await (await fetch(`${base}/api/rooms`, { method: 'POST' })).json()) as { code: string };
+    const a = new WebSocket(wsUrl(code, 'token-dddddddd'));
+    const b = new WebSocket(wsUrl(code, 'token-eeeeeeee'));
+    await Promise.all([nextMessage(a), nextMessage(b)]);
+    // cada ação na sala manda um snapshot novo para as duas abas
+    const say = async (ws: WebSocket, msg: object) => { const p = Promise.all([nextMessage(a), nextMessage(b)]); ws.send(JSON.stringify(msg)); return p; };
+    await say(a, { type: 'join', nickname: 'Zé' });
+    await say(b, { type: 'join', nickname: 'Dita' });
+    await say(a, { type: 'takeSeat', team: 0 });
+    await say(b, { type: 'takeSeat', team: 1 });
+
+    const eventsA = nextMessage(a), eventsB = nextMessage(b);
+    a.send(JSON.stringify({ type: 'start' }));
+    expect((await eventsA).type).toBe('events');
+    expect((await eventsB).type).toBe('events');
+    const [snapA, snapB] = (await Promise.all([nextMessage(a), nextMessage(b)])) as { snapshot: RoomSnapshot }[];
+    expect(snapA.snapshot.phase).toBe('playing');
+    expect(snapA.snapshot.members.map((m) => [m.nickname, m.seat, m.bot])).toEqual([['Zé', 0, false], ['Dita', 1, false], ['Tião', 2, true], ['Nena', 3, true]]);
+    const handA = snapA.snapshot.game!.hand!, handB = snapB.snapshot.game!.hand!;
+    expect(handA.cards[0].every((c) => c !== null)).toBe(true);
+    expect(handA.cards[1]).toEqual([null, null, null]);
+    expect(handB.cards[1].every((c) => c !== null)).toBe(true);
+    expect(handB.cards[0]).toEqual([null, null, null]);
+    expect(handA.stock).toBe(28);
+    a.close(); b.close();
   });
 });

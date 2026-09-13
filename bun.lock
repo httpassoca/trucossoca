@@ -42,6 +42,9 @@
     "packages/protocol": {
       "name": "@truco/protocol",
       "version": "0.1.0",
+      "dependencies": {
+        "@truco/rules": "workspace:*",
+      },
       "devDependencies": {
         "typescript": "^5.9.0",
       },

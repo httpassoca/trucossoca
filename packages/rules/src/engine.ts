@@ -1,6 +1,6 @@
 import { makeDeck, shuffle, strength } from './cards';
 import type {
-  CardId, DezAction, GameState, HandState, Play, PlayKind, RespondAction, Rng, Rules, Seat, Team,
+  CardId, DezAction, GameReadable, GameState, GameView, HandState, Play, PlayKind, RespondAction, Rng, Rules, Seat, Team,
 } from './types';
 
 export const defaultRules: Rules = {
@@ -60,7 +60,7 @@ export function startHand(g: GameState, rng: Rng, opts: { deck?: CardId[]; rules
   return h;
 }
 
-export function canRaise(g: GameState, seat: Seat): boolean {
+export function canRaise(g: GameReadable, seat: Seat): boolean {
   const h = g.hand, R = g.rules;
   if (!h || h.phase !== 'play' || h.pending || h.special !== 'normal') return false;
   if (R.raiseOnlyOnTurn && h.turn !== seat) return false;
@@ -79,7 +79,7 @@ export function raise(g: GameState, seat: Seat): boolean {
 }
 
 /** Quem responde ao pedido: alguém da outra dupla (cadeira seguinte a quem pediu). */
-export function responderSeat(g: GameState): Seat {
+export function responderSeat(g: GameReadable): Seat {
   const p = g.hand!.pending!;
   return nextSeat(p.by);
 }
@@ -116,12 +116,12 @@ export function decideDez(g: GameState, action: DezAction): boolean {
   return true;
 }
 
-export function coverAllowed(g: GameState): boolean {
+export function coverAllowed(g: GameReadable): boolean {
   const h = g.hand; if (!h) return false;
   return g.rules.allowCovered && h.special !== 'ferro' && h.played.length >= g.rules.coverFromTrick;
 }
 
-export function currentBest(g: GameState): { best: number; play: Play | null } {
+export function currentBest(g: GameReadable): { best: number; play: Play | null } {
   const h = g.hand!, plays = h.played[h.played.length - 1];
   let best = -1, play: Play | null = null;
   for (const p of plays) {
@@ -197,9 +197,29 @@ function endHand(g: GameState, winner: Team | null, points: number) {
 }
 
 /** Quem precisa agir agora (-1 = ninguém: mão encerrada / decisão de mão de dez). */
-export function actingSeat(g: GameState): Seat | -1 {
+export function actingSeat(g: GameReadable): Seat | -1 {
   const h = g.hand; if (!h || g.over) return -1;
   if (h.phase === 'respond') return responderSeat(g);
   if (h.phase === 'play') return h.turn;
   return -1;
+}
+
+/** De onde se olha a partida: uma cadeira (vê as próprias cartas e as do parceiro na decisão da mão de dez), tudo, ou nada. */
+export type Perspective = Seat | 'all' | 'none';
+
+/**
+ * A partida vista de `from`: cópia sem a fila de eventos, cartas alheias ocultas e o monte só como contagem.
+ * As cartas já jogadas ficam inteiras, cobertas inclusive: quando as jogadas forem online, a coberta precisa esconder o id.
+ */
+export function viewFor(g: GameState, from: Perspective): GameView {
+  const { events: _events, hand, ...core } = structuredClone(g);
+  if (!hand) return { ...core, hand: null };
+  const { cards, stock, ...rest } = hand;
+  const sees = (s: Seat) => {
+    if (from === 'all') return true;
+    if (from === 'none') return false;
+    if (s === from) return true;
+    return hand.revealPartner && s === partnerOf(from) && teamOf(from) === hand.decider;
+  };
+  return { ...core, hand: { ...rest, cards: cards.map((held, s) => (sees(s as Seat) ? held : held.map(() => null))), stock: stock.length } };
 }

@@ -56,3 +56,16 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: var(--ss-bg)
 .tm-members li.off > span:first-child { color: var(--ss-fg-faint); text-decoration: line-through; }
 .tm-warn { color: var(--ss-yellow); }
 .tm-error { margin: 0; color: var(--ss-red); font-size: var(--ss-ui-sm); }
+
+/* lobby: duplas, fantasmas, regras */
+.tm-lobby { width: min(640px, 100%); }
+.tm-teams { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.tm-team .head { padding-bottom: 0; }
+.tm-team.mine { border-color: var(--ss-accent); }
+.tm-team .body { display: flex; flex-direction: column; gap: 8px; min-height: 64px; }
+.tm-team .foot { justify-content: flex-end; }
+.tm-team-name { font-family: var(--ss-font-display); font-weight: 700; width: 100%; }
+.tm-members li.empty > span { color: var(--ss-fg-faint); font-size: var(--ss-ui-xs); }
+.tm-seats .tm-bot { color: var(--ss-fg-faint); font-size: var(--ss-ui-xs); margin-left: 2px; }
+.tm-toast { position: fixed; top: 12px; left: 50%; transform: translateX(-50%); background: var(--ss-bg-elev); border: 1px solid var(--ss-line); padding: 6px 12px; font-family: var(--ss-font-body); font-size: var(--ss-ui-sm); z-index: 2; }
+@media (max-width: 640px) { .tm-teams { grid-template-columns: 1fr; } }

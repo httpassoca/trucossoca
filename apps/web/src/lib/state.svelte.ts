@@ -1,9 +1,5 @@
 import { defaultRules, type Rules, type Seat } from '@truco/rules';
-import { LocalTable } from './table/local';
-import type { Table, TableSnapshot } from './table/table';
-
-export const NAMES = ['Você', 'Tião', 'Dita', 'Zé'] as const;
-export const TEAMS = ['Nós', 'Eles'] as const;
+import { emptySnapshot, type Table, type TableSnapshot } from './table/table';
 
 export type Prompt = { kind: 'respond' } | { kind: 'dez' } | { kind: 'over' } | null;
 export interface LogLine { tag: string; text: string }
@@ -15,21 +11,17 @@ export const ui = $state({
   menuOpen: true,
   locked: false,          // pointer lock ativo
   log: [] as LogLine[],
-  rules: { ...defaultRules } as Rules, // aplicadas na próxima mão
+  rules: { ...defaultRules } as Rules, // offline: aplicadas na próxima mão
   bots: true,
   botDelay: 800,
 });
 
 /**
- * A mesa por trás da interface (ADR 0003). Offline: motor e bots no navegador, lendo a configuração de `ui` ao vivo.
- * As regras saem do proxy do `$state` como objeto plano: o motor guarda e clona o que recebe.
+ * A mesa por trás da interface (ADR 0003): local ou remota, encaixada pela tela via `attachTable`.
+ * `snap` é o espelho reativo do snapshot: trocado inteiro a cada mudança, nunca mutado.
  */
-export const table: Table = new LocalTable({
-  get rules() { return $state.snapshot(ui.rules); },
-  get bots() { return ui.bots; },
-  get botDelay() { return ui.botDelay; },
-});
-
-/** Espelho reativo do snapshot da mesa: trocado inteiro a cada mudança, nunca mutado. */
-class Live { snap = $state.raw<TableSnapshot>(table.snapshot); }
+class Live {
+  snap = $state.raw<TableSnapshot>(emptySnapshot());
+  table: Table | null = null;
+}
 export const live = new Live();

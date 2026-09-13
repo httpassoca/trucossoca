@@ -1,10 +1,14 @@
 <script lang="ts">
-  import type { Rules } from '@truco/rules';
   import { newGame } from '../controller';
   import { resume } from '../input';
   import { navigate } from '../route.svelte';
-  import { ui } from '../state.svelte';
+  import { live, ui } from '../state.svelte';
   import Kbd from './Kbd.svelte';
+  import RulesForm from './RulesForm.svelte';
+  import Seg from './Seg.svelte';
+  import Switch from './Switch.svelte';
+
+  const snap = $derived(live.snap);
 
   // dois eixos do dssoca + override do token --ss-accent
   const ACCENTS: Record<string, string> = { '': '', yellow: 'var(--ss-yellow)', cyan: 'var(--ss-cyan)', magenta: 'var(--ss-magenta)', red: 'var(--ss-red)' };
@@ -17,74 +21,54 @@
     if (ACCENTS[accent]) root.style.setProperty('--ss-accent', ACCENTS[accent]); else root.style.removeProperty('--ss-accent');
   });
 
-  type BoolRule = { [K in keyof Rules]: Rules[K] extends boolean ? K : never }[keyof Rules];
-  const switches: { key: BoolRule; label: string }[] = [
-    { key: 'raiseOnlyOnTurn', label: 'Trucar só na sua vez' },
-    { key: 'alternateRaises', label: 'Aumentos alternam entre duplas' },
-    { key: 'allowCovered', label: 'Carta coberta permitida' },
-    { key: 'maoDeDezPeek', label: 'Mão de dez: olhar carta do parceiro' },
-    { key: 'maoDeFerroBlind', label: 'Mão de ferro às cegas' },
-    { key: 'allTieNobody', label: 'Empate nas 3 vazas: ninguém pontua' },
-  ];
   const shortcuts = [
     { group: 'na mesa', rows: [
       ['Olhar ao redor', ['mouse']], ['Escolher carta', ['←', '→']], ['Jogar a carta escolhida', ['↵', 'espaço']],
-      ['Jogar direto', ['1', '2', '3']], ['Pedir truco / seis / dez / doze', ['T']], ['Cobrir a próxima carta', ['C']], ['Trocar de cadeira (debug)', ['Tab']],
+      ['Jogar direto', ['1', '2', '3']], ['Pedir truco / seis / dez / doze', ['T']], ['Cobrir a próxima carta', ['C']], ['Olhar de outra cadeira', ['Tab']],
     ] },
     { group: 'quando pedem truco', rows: [['Aceitar / jogar', ['↵']], ['Correr', ['X']], ['Pedir mais', ['R']]] },
     { group: 'menu', rows: [['Abrir / fechar este menu, soltar o mouse', ['Esc']]] },
   ] as { group: string; rows: [string, string[]][] }[];
 </script>
 
-{#snippet seg<T extends string | number>(value: T, options: [T, string][], set: (v: T) => void)}
-  <div class="ss-segmented" role="radiogroup">
-    {#each options as [v, label]}
-      <button type="button" role="radio" class="segment" class:selected={value === v} aria-checked={value === v} onclick={() => set(v)}>{label}</button>
-    {/each}
-  </div>
-{/snippet}
-
 {#if ui.menuOpen}
   <div class="tm-backdrop">
     <div class="ss-card elevated tm-menu" data-size-variant="sm">
       <div class="head">
-        <div class="heading"><span class="title">truco mineiro</span><span class="desc">mesa 3D · preview local com bots</span></div>
+        <div class="heading"><span class="title">truco mineiro</span><span class="desc">{snap.rulesEditable ? 'mesa offline contra bots' : 'regras trancadas até o fim da partida'}</span></div>
         <span class="meta">esc</span>
       </div>
       <div class="body">
         <div>
-          <div class="tm-section"><h4>Tema</h4>{@render seg(theme, [['dark', 'escuro'], ['light', 'claro']], (v) => (theme = v))}</div>
-          <div class="tm-section"><h4>Destaque</h4>{@render seg(accent, [['', 'verde'], ['yellow', 'âmbar'], ['cyan', 'ciano'], ['magenta', 'magenta'], ['red', 'vermelho']], (v) => (accent = v))}</div>
-          <div class="tm-section"><h4>Tamanho</h4>{@render seg(size, [['sm', 'sm'], ['md', 'md'], ['lg', 'lg']], (v) => (size = v))}</div>
+          <div class="tm-section"><h4>Tema</h4><Seg value={theme} options={[['dark', 'escuro'], ['light', 'claro']]} onselect={(v) => (theme = v)} /></div>
+          <div class="tm-section"><h4>Destaque</h4><Seg value={accent} options={[['', 'verde'], ['yellow', 'âmbar'], ['cyan', 'ciano'], ['magenta', 'magenta'], ['red', 'vermelho']]} onselect={(v) => (accent = v)} /></div>
+          <div class="tm-section"><h4>Tamanho</h4><Seg value={size} options={[['sm', 'sm'], ['md', 'md'], ['lg', 'lg']]} onselect={(v) => (size = v)} /></div>
           <div class="tm-section">
-            <h4>Regras <span style="text-transform:none;letter-spacing:0">(aplicam na próxima mão)</span></h4>
-            <div class="tm-rules">
-              {#each switches as s (s.key)}
+            {#if !snap.rulesEditable}
+              <h4>Regras <span style="text-transform:none;letter-spacing:0">(em vigor nesta partida)</span></h4>
+              <RulesForm rules={snap.game.rules} readonly />
+            {:else}
+              <h4>Regras <span style="text-transform:none;letter-spacing:0">(aplicam na próxima mão)</span></h4>
+              <RulesForm rules={ui.rules} onchange={(r) => (ui.rules = r)} />
+              <div class="tm-rules" style="margin-top:6px">
                 <div class="tm-line">
-                  <span>{s.label}</span>
-                  <label class="ss-switch"><button type="button" role="switch" class="track" aria-label={s.label} class:on={ui.rules[s.key]} aria-checked={ui.rules[s.key]} onclick={() => (ui.rules[s.key] = !ui.rules[s.key])}><span class="thumb"></span></button></label>
+                  <span>Bots jogam as outras cadeiras</span>
+                  <Switch label="Bots jogam as outras cadeiras" on={ui.bots} ontoggle={(v) => (ui.bots = v)} />
                 </div>
-              {/each}
-              <div class="tm-line"><span>Cobrir a partir da vaza</span>{@render seg(ui.rules.coverFromTrick, [[1, '1ª'], [2, '2ª']], (v) => (ui.rules.coverFromTrick = v))}</div>
-              <div class="tm-line"><span>Após empate, quem sai</span>{@render seg(ui.rules.tieLeader, [['mao', 'o mão'], ['leader', 'quem saiu']], (v) => (ui.rules.tieLeader = v))}</div>
-              <div class="tm-line">
-                <span>Bots jogam as outras cadeiras</span>
-                <label class="ss-switch"><button type="button" role="switch" class="track" aria-label="Bots jogam as outras cadeiras" class:on={ui.bots} aria-checked={ui.bots} onclick={() => (ui.bots = !ui.bots)}><span class="thumb"></span></button></label>
+                <div class="tm-line"><span>Ritmo dos bots</span><Seg value={ui.botDelay} options={[[350, 'rápido'], [800, 'normal'], [1500, 'lento']]} onselect={(v) => (ui.botDelay = v)} /></div>
               </div>
-              <div class="tm-line"><span>Ritmo dos bots</span>{@render seg(ui.botDelay, [[350, 'rápido'], [800, 'normal'], [1500, 'lento']], (v) => (ui.botDelay = v))}</div>
-            </div>
-            <div class="tm-hint">Manilhas fixas: 4♣ &gt; 7♥ &gt; A♠ &gt; 7♦ · escada 2 → 4 → 6 → 10 → 12</div>
+            {/if}
           </div>
         </div>
         <div>
           <div class="tm-section">
             <h4>Teclado</h4>
             <div class="ss-shortcuts-help">
-              {#each shortcuts as g}
+              {#each shortcuts as g (g.group)}
                 <div class="group">
                   <h3 class="gname">{g.group}</h3>
                   <ul class="rows tm-rows">
-                    {#each g.rows as [label, keys]}
+                    {#each g.rows as [label, keys] (label)}
                       <li class="row"><span class="label">{label}</span><span class="keys"><Kbd {keys} or={keys[0] === '↵' && keys.length === 2} /></span></li>
                     {/each}
                   </ul>
@@ -96,8 +80,8 @@
       </div>
       <div class="foot">
         <button class="ss-btn ghost" type="button" onclick={() => navigate('/')}>Início</button>
-        <button class="ss-btn ghost" type="button" onclick={() => { newGame(); resume(); }}>Nova partida</button>
-        <button class="ss-btn primary" type="button" onclick={resume}>Jogar <Kbd keys={['↵']} /></button>
+        {#if snap.canRestart}<button class="ss-btn ghost" type="button" onclick={() => { newGame(); resume(); }}>Nova partida</button>{/if}
+        <button class="ss-btn primary" type="button" onclick={resume}>{snap.seat === null ? 'Olhar' : 'Jogar'} <Kbd keys={['↵']} /></button>
       </div>
     </div>
   </div>

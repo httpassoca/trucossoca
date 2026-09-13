@@ -25,9 +25,11 @@ const box = (w: number, h: number, d: number, color: number) => {
 };
 
 export interface Character {
-  seat: Seat; g: THREE.Group; head: THREE.Group; mouth: THREE.Mesh; torso: THREE.Mesh;
+  seat: Seat; name: string; g: THREE.Group; head: THREE.Group; mouth: THREE.Mesh; torso: THREE.Mesh;
   label: THREE.Sprite; labelOn: THREE.Sprite; bubble: THREE.Sprite; mouthUntil: number; bubbleUntil: number;
 }
+
+const LABEL_COLOR = '#dae0da', LABEL_ON_COLOR = '#66ef73';
 
 /** Humanoide low-poly sentado, olhando para -z local. Origem no chão, sob a cadeira. */
 export function makeCharacter(seat: Seat, p: Preset, name: string): Character {
@@ -72,21 +74,35 @@ export function makeCharacter(seat: Seat, p: Preset, name: string): Character {
     head.add(place(box(0.12, 0.03, 0.02, p.hair), 0, -0.05, F - 0.005));
   }
   g.add(head);
-  const label = place(makeTextSprite(name, '#dae0da'), 0, 1.72, 0); g.add(label);
-  const labelOn = place(makeTextSprite(name, '#66ef73'), 0, 1.72, 0); labelOn.visible = false; g.add(labelOn);
+  const label = place(makeTextSprite(name, LABEL_COLOR), 0, 1.72, 0); g.add(label);
+  const labelOn = place(makeTextSprite(name, LABEL_ON_COLOR), 0, 1.72, 0); labelOn.visible = false; g.add(labelOn);
   const bubble = new THREE.Sprite(new THREE.SpriteMaterial({ transparent: true }));
   bubble.position.set(0, 1.95, 0); bubble.scale.set(0.7, 0.175, 1); bubble.visible = false; g.add(bubble);
   g.position.copy(seatDir(seat).multiplyScalar(SEAT_R)); g.rotation.y = seatAngle(seat);
-  return { seat, g, head, mouth, torso, label, labelOn, bubble, mouthUntil: 0, bubbleUntil: 0 };
+  return { seat, name, g, head, mouth, torso, label, labelOn, bubble, mouthUntil: 0, bubbleUntil: 0 };
+}
+
+/** Troca o nome sobre a cabeça (quem senta na cadeira mudou). */
+export function nameCharacter(ch: Character, name: string) {
+  if (ch.name === name) return;
+  ch.name = name;
+  for (const [sprite, color] of [[ch.label, LABEL_COLOR], [ch.labelOn, LABEL_ON_COLOR]] as const) {
+    const mat = sprite.material as THREE.SpriteMaterial;
+    mat.map?.dispose(); mat.map = textTexture(name, color); mat.needsUpdate = true;
+  }
 }
 
 function canvasTexture(c: HTMLCanvasElement) { const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t; }
 
-export function makeTextSprite(text: string, color: string, size = 40, w = 256, h = 64) {
+function textTexture(text: string, color: string, size = 40, w = 256, h = 64) {
   const c = document.createElement('canvas'); c.width = w; c.height = h; const x = c.getContext('2d')!;
   x.font = `bold ${size}px ${UI_FONT}`; x.textAlign = 'center'; x.textBaseline = 'middle';
   x.lineWidth = 6; x.strokeStyle = 'rgba(0,0,0,.65)'; x.strokeText(text, w / 2, h / 2); x.fillStyle = color; x.fillText(text, w / 2, h / 2);
-  const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: canvasTexture(c), transparent: true, depthTest: false }));
+  return canvasTexture(c);
+}
+
+export function makeTextSprite(text: string, color: string) {
+  const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: textTexture(text, color), transparent: true, depthTest: false }));
   sp.scale.set(0.5, 0.125, 1); return sp;
 }
 

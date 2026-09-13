@@ -5,8 +5,8 @@
   import * as THREE from 'three';
   import { bus, myTurn } from '../controller';
   import { installPointerLock } from '../input';
-  import { live, NAMES, ui } from '../state.svelte';
-  import { buildCards, makeCharacter, PRESETS, sayTo, seatDir, TABLE_R, TABLE_TOP, type Character } from './builders';
+  import { live, ui } from '../state.svelte';
+  import { buildCards, makeCharacter, nameCharacter, PRESETS, sayTo, seatDir, TABLE_R, TABLE_TOP, type Character } from './builders';
   import { BASE_PITCH, CAM_DIST, CAM_H, look } from './camera';
   import { aimHead } from './gaze';
   import { layoutCards } from './layout';
@@ -17,7 +17,7 @@
   scene.fog = new THREE.Fog(0x232323, 4, 11);
 
   const cards = buildCards();
-  const chars: Character[] = PRESETS.map((p, s) => makeCharacter(s as Seat, p, NAMES[s]));
+  const chars: Character[] = PRESETS.map((p, s) => makeCharacter(s as Seat, p, live.snap.seats[s].name));
   const cardList = Object.values(cards);
 
   let camera = $state<THREE.PerspectiveCamera>();
@@ -28,8 +28,9 @@
 
   onMount(() => installPointerLock(canvas));
 
-  // relayout sempre que a mesa muda de snapshot (ou a cadeira/carta escolhida)
+  // relayout sempre que a mesa muda de snapshot (ou a cadeira/carta escolhida); nomes sobre as cabeças seguem quem senta
   $effect(() => { const s = live.snap; layoutCards(s.game, { view: ui.view, sel: ui.sel, myTurn: myTurn(s, ui.view) }, cards); });
+  $effect(() => { live.snap.seats.forEach((seat, s) => nameCharacter(chars[s], seat.name)); });
 
   useTask(() => {
     const now = performance.now(), t = clock.getElapsedTime();

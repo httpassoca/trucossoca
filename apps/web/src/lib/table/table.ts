@@ -1,13 +1,21 @@
-import type { CardId, DezAction, GameEvent, GameState, RespondAction, Seat } from '@truco/rules';
+import { DEFAULT_TEAM_NAMES } from '@truco/protocol';
+import { createGame, responderSeat, teamOf, viewFor, type CardId, type DezAction, type GameEvent, type GameReadable, type GameView, type RespondAction, type Seat } from '@truco/rules';
+
+/** Quem ocupa cada cadeira, como a interface mostra. */
+export interface SeatView { name: string; bot: boolean }
 
 /**
  * O que a mesa mostra a este cliente. É um objeto novo a cada mudança, nunca mutado no lugar,
  * então a interface pode reagir por identidade. Online, `game` chega do servidor só com as próprias cartas.
  */
 export interface TableSnapshot {
-  game: GameState;
-  /** cadeira que esta pessoa controla agora */
-  seat: Seat;
+  game: GameView;
+  /** cadeira que esta pessoa controla agora; null = fantasma, só olha */
+  seat: Seat | null;
+  /** quem está em cada cadeira */
+  seats: SeatView[];
+  /** nomes das duplas: a 0 senta nas cadeiras 0 e 2, a 1 nas 1 e 3 */
+  teams: [string, string];
   /** de quem a mesa espera uma ação (pessoa ou bot); -1 = ninguém (mão encerrada, fim de jogo) */
   acting: Seat | -1;
   /** a próxima carta da cadeira local vai coberta */
@@ -16,6 +24,10 @@ export interface TableSnapshot {
   canRaise: boolean;
   /** cobrir é permitido nesta vaza */
   canCover: boolean;
+  /** as regras (e a configuração da mesa) podem ser mexidas daqui; online a sala tranca até o fim da partida */
+  rulesEditable: boolean;
+  /** `newGame` faz sentido nesta mesa (offline); online a partida nova nasce no lobby */
+  canRestart: boolean;
 }
 
 /** Chamado depois de cada mudança com o snapshot novo e os eventos que a causaram (vazio se só a intenção mudou). */
@@ -33,4 +45,24 @@ export interface Table {
   toggleCover(): void;
   subscribe(listener: TableListener): () => void;
   dispose(): void;
+}
+
+/**
+ * De quem a mesa espera a ação, do ponto de vista de `seat`: quando é a dupla de `seat` que responde ao truco
+ * ou decide a mão de dez, é a própria cadeira; senão, a cadeira que o motor aponta (na mão de dez, a primeira da dupla).
+ */
+export function actingFor(g: GameReadable, seat: Seat | null): Seat | -1 {
+  const h = g.hand;
+  if (!h || g.over || h.phase === 'over') return -1;
+  if (h.phase === 'dezDecision') return seat !== null && teamOf(seat) === h.decider ? seat : h.decider === 0 ? 0 : 1;
+  if (h.phase === 'respond') { const r = responderSeat(g); return seat !== null && teamOf(seat) === teamOf(r) ? seat : r; }
+  return h.turn;
+}
+
+/** Mesa sem partida e sem ninguém: o que a interface mostra antes de uma mesa ser encaixada. */
+export function emptySnapshot(): TableSnapshot {
+  return {
+    game: viewFor(createGame(), 'all'), seat: null, seats: [0, 1, 2, 3].map(() => ({ name: '', bot: false })), teams: [...DEFAULT_TEAM_NAMES],
+    acting: -1, coverNext: false, canRaise: false, canCover: false, rulesEditable: false, canRestart: false,
+  };
 }
