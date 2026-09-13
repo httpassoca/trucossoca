@@ -10,6 +10,7 @@
     "test": "bun test",
     "preview": "bun run --filter @truco/web preview",
     "docker:build": "docker build --tag trucossoca .",
+    "docker:load": "gunzip -c trucossoca.tar.gz | docker load",
     "docker:start": "docker run --name trucossoca -d --restart unless-stopped -p 127.0.0.1:3002:3000 trucossoca",
     "docker:stop": "docker stop trucossoca && docker rm trucossoca"
   },

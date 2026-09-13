@@ -28,19 +28,27 @@ jobs:
           bun run check
           bun test
 
+      # A imagem é buildada aqui, nunca no VPS: o `bun install` + Vite do build engasgaram o servidor inteiro
+      # (memória), derrubando até o passoca-api. O VPS só carrega o tar e roda.
+      - name: Build the image
+        run: |
+          bun run docker:build
+          docker save trucossoca:latest | gzip -1 > trucossoca.tar.gz
+          ls -lh trucossoca.tar.gz
+
       - name: Copy to server
         uses: appleboy/scp-action@v1
         with:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_KEY }}
-          source: '.,!node_modules,!**/node_modules,!**/dist,!.git'
+          source: 'trucossoca.tar.gz,package.json'
           target: '~/dev/trucossoca'
           overwrite: true
           rm: true
           timeout: 300s
 
-      - name: Build, restart and probe the container
+      - name: Load, restart and probe the container
         uses: appleboy/ssh-action@v1
         with:
           host: ${{ secrets.SSH_HOST }}
@@ -52,9 +60,10 @@ jobs:
           script: |
             set -e
             cd ~/dev/trucossoca
-            npm run docker:build
+            npm run docker:load
             npm run docker:stop || true
             npm run docker:start
+            rm -f trucossoca.tar.gz
             # `docker run -d` volta antes do servidor subir: um container que morre na largada ainda
             # pareceria um deploy verde. Sonda o /health e a raiz (503 quando o cliente não foi buildado).
             ok=0
