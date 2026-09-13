@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { mayRaise, myTurn } from '../controller';
+  import { canCycleSeats, mayRaise, myTurn } from '../controller';
   import { callName } from '../format';
   import { t } from '../i18n.svelte';
   import { live, ui } from '../state.svelte';
@@ -16,7 +16,12 @@
   {#if !ui.locked && !ui.menuOpen}<span class="tm-k on"><Kbd keys={[t('kbd.click')]} /><span>{t('hud.clickToLook')}</span></span>{/if}
   {#if snap.seat === null}
     <span class="tm-k hot"><Kbd keys={['W', 'A', 'S', 'D']} /><span>{t('hud.walk')}</span></span>
+    <span class="tm-k"><Kbd keys={[t('kbd.space')]} /><span>{t('hud.jump')}</span></span>
     <span class="tm-k"><Kbd keys={['Tab']} /><span>{t('hud.nextSeat')}</span></span>
+  {:else if ui.standing}
+    <span class="tm-k hot"><Kbd keys={['W', 'A', 'S', 'D']} /><span>{t('hud.walk')}</span></span>
+    <span class="tm-k"><Kbd keys={[t('kbd.space')]} /><span>{t('hud.jump')}</span></span>
+    <span class="tm-k" class:hot={ui.nearSeat}><Kbd keys={[t('kbd.shift')]} /><span>{t('hud.sit')}</span></span>
   {:else if mine}
     <span class="tm-k hot"><Kbd keys={['←', '→']} /><span>{t('hud.pick')}</span></span>
     <span class="tm-k hot"><Kbd keys={['↵']} /><span>{t('hud.play')}</span></span>
@@ -26,6 +31,10 @@
   {:else if raisable}
     <span class="tm-k"><Kbd keys={['T']} /><span>{t('hud.raise')}</span></span>
   {/if}
-  {#if snap.seat !== null}<span class="tm-k"><Kbd keys={['Tab']} /><span>{t('hud.seat')}</span></span>{/if}
+  {#if snap.seat !== null && !ui.standing}
+    <span class="tm-k"><Kbd keys={[t('kbd.rightClick')]} /><span>{t('hud.zoom')}</span></span>
+    <span class="tm-k"><Kbd keys={[t('kbd.space'), t('kbd.space')]} /><span>{t('hud.standUp')}</span></span>
+    {#if canCycleSeats(snap)}<span class="tm-k"><Kbd keys={['Tab']} /><span>{t('hud.seat')}</span></span>{/if}
+  {/if}
   <span class="tm-k"><Kbd keys={['Esc']} /><span>{t('hud.menu')}</span></span>
 </div>

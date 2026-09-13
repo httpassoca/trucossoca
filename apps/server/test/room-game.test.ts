@@ -624,7 +624,7 @@ describe('partida online: fantasmas', () => {
   test('presença não passa pela sala: não muda nada nem adia a morte', () => {
     const s = scripted();
     const before = structuredClone(s.state);
-    s.feed({ kind: 'message', token: 't3', message: { type: 'presence', presence: { x: 1, z: 2, yaw: 0, pitch: 0 } } }, T0 + 5_000);
+    s.feed({ kind: 'message', token: 't3', message: { type: 'presence', presence: { x: 1, y: 0, z: 2, yaw: 0, pitch: 0 } } }, T0 + 5_000);
     expect(s.state).toEqual(before);
   });
 });

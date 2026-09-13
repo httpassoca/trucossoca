@@ -244,7 +244,7 @@ describe('partida online pelo cano: RemoteTable ↔ sala', () => {
     expect(nena.table.snapshot.game.hand!.cards.every((held) => held.every((c) => c !== null))).toBe(true);
 
     // presença: a dela chega aos outros dois (nunca a ela); a de quem senta chega a ela, por cadeira
-    const walk = { x: 2, z: 3, yaw: 1, pitch: 0 }, gaze = { x: 0, z: 1.45, yaw: 0.2, pitch: -0.4 };
+    const walk = { x: 2, y: 0, z: 3, yaw: 1, pitch: 0 }, gaze = { x: 0, y: 0, z: 1.45, yaw: 0.2, pitch: -0.4 };
     nena.table.setPresence(walk); ze.table.setPresence(gaze); clock.settle();
     expect(ze.table.presenceOf('m3')).toEqual(walk);
     expect(dita.table.presenceOf('m3')).toEqual(walk);

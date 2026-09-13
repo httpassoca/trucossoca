@@ -99,11 +99,19 @@ apps/web         Vite + Svelte 5 + Threlte 8 + three, HUD em dssoca
                             chega aos outros, as jogadas dela são recusadas, e ela senta no lugar de um bot entre mãos)
   src/lib/format.ts         eventos → linhas do log por chave (`LogLine`: mão, vaza, frase e a dica que introduz); `withHint` mantém a
                             dica só em inglês e só na primeira vez; `renderLine` rende na língua da hora (trocar a língua rende o log inteiro)
-  src/lib/scene/            builders (personagens/cartas/fantasmas procedurais), throw (onde a carta cai, sorteado da semente da
-                            jogada: igual em toda tela), layout (cartas ocultas, a coberta alheia e o monte são desenhados com as
-                            40 cartas físicas que a pessoa não vê em lugar nenhum), gaze (cabeça de quem senta segue a presença
-                            que a pessoa mandou; bots olham pelo jogo), camera (olhar; fantasma: andar, ficar atrás de uma cadeira),
-                            World.svelte (câmera sentada ou solta, a própria presença dez vezes por segundo, um vulto por fantasma)
+  src/lib/scene/buddy/      o boneco (ADR 0006): model (feijão torneado, rosto no corpo, braços e pernas; expressões, poses de braço,
+                            andar/pular/sentar/quicar, olhar nos olhos e depois no tronco, inclinar, vulto, primeira pessoa),
+                            parts (as peças do molho: chapéus, cabelos, barbas, óculos, pescoço, roupas, calçados, o que segura, arara),
+                            molho (o molho de cada apelido, sorteado pela semente do apelido; bots vestem os seis regionais),
+                            reactions (evento → cara, braços e quique de cada cadeira: quem age, a dupla, os adversários)
+  src/lib/scene/            builders (bonecos sentados nos banquinhos, vultos dos fantasmas, cartas: costas dos dois lados para quem
+                            não conhece a carta), throw (onde a carta cai, sorteado da semente da jogada: igual em toda tela), layout
+                            (cartas ocultas, a coberta alheia e o monte são desenhados com as 40 cartas físicas que a pessoa não vê em
+                            lugar nenhum), gaze (quem senta olha para onde a presença diz e se inclina quanto ela diz; bots olham pelo
+                            jogo), camera (olhar, zoom; andar e pular com gravidade: a mesa é chão elevado, o banquinho também; levantar
+                            e sentar; ler de uma presença se a pessoa está de pé e quanto se inclina), World.svelte (câmera nos olhos
+                            do boneco, sentada ou solta; a própria presença dez vezes por segundo, com altura; um vulto por fantasma;
+                            as reações agendadas com um atraso por boneco)
   src/lib/hud/              Score (com o aviso "bot joga por você"), Seats (·bot / ·bot jogando), Keys, Log (com a dica em inglês na linha),
                             Prompt, Menu (regras trancadas online; seção da sala vinda de fora; idioma), LangSwitch, RulesForm, Seg, Switch
                             (markup vanilla do dssoca). Toda frase passa por `t` (i18n): nada de texto solto
@@ -134,7 +142,12 @@ o registro DNS, o bloco do nginx em `deploy/truco.passoca.dev.nginx` com upgrade
   (puxada para quem jogou e atravessada), `tie` ao lado, `lose` e `cover` perto do jogador e tortas.
   Vazas passadas escurecem. O motor só dá a semente da jogada (a mesma para todo mundo); a posição é
   derivada dela no cliente (`scene/throw.ts`).
-- **Teclado primeiro.** Mouse só para olhar (pointer lock). Esc solta o mouse e abre o menu.
+- **Teclado primeiro.** Mouse só para olhar (pointer lock) e, com o botão direito, chegar perto. Esc solta o mouse e abre o menu.
+  Espaço pula: sentado, quica no banquinho; duas vezes, levanta e anda (WASD) e pula pela mesa, subindo nela se quiser, ainda
+  jogando pela cadeira; Shift perto da cadeira senta de novo. Enter joga a carta escolhida (espaço não).
+- **Bonecos procedurais** (ADR 0006): cada apelido tem o seu molho, sorteado do apelido, igual em toda tela; bots vestem os seis
+  molhos regionais. Ninguém vê as cartas dos outros, de pé ou sentado; só fantasmas, quando a sala deixa: uma carta que a pessoa
+  não conhece mostra as costas dos dois lados. Tab só troca de cadeira para fantasma e na mesa offline sem bots.
 - **Idioma por navegador** (ADR 0005): português padrão, inglês pela troca no início, na sala e no menu; as chamadas
   ("Truco!", "Seis!", "Corro!") e as mãos especiais ficam em português nas duas, com uma dica em inglês uma vez só.
 - **dssoca** via `theme.css` + `vanilla.css` com o contrato de markup dos componentes Svelte —

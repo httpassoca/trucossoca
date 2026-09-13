@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { Snippet } from 'svelte';
-  import { newGame } from '../controller';
+  import { canCycleSeats, newGame } from '../controller';
   import { t } from '../i18n.svelte';
   import { resume } from '../input';
   import { navigate } from '../route.svelte';
@@ -27,10 +27,12 @@
   });
 
   const shortcuts = $derived([
-    ...(snap.seat === null ? [{ group: t('keys.group.ghost'), rows: [[t('keys.walk'), ['W', 'A', 'S', 'D']], [t('keys.look'), [t('kbd.mouse')]], [t('keys.nextSeat'), ['Tab']]] }] : []),
+    ...(snap.seat === null ? [{ group: t('keys.group.ghost'), rows: [[t('keys.walk'), ['W', 'A', 'S', 'D']], [t('keys.look'), [t('kbd.mouse')]], [t('keys.jump'), [t('kbd.space')]], [t('keys.nextSeat'), ['Tab']]] }] : []),
     { group: t('keys.group.table'), rows: [
-      [t('keys.look'), [t('kbd.mouse')]], [t('keys.pick'), ['←', '→']], [t('keys.playPicked'), ['↵', t('kbd.space')]],
-      [t('keys.playDirect'), ['1', '2', '3']], [t('keys.raise'), ['T']], [t('keys.cover'), ['C']], [t('keys.otherSeat'), ['Tab']],
+      [t('keys.look'), [t('kbd.mouse')]], [t('keys.zoom'), [t('kbd.rightClick')]], [t('keys.pick'), ['←', '→']], [t('keys.playPicked'), ['↵']],
+      [t('keys.playDirect'), ['1', '2', '3']], [t('keys.raise'), ['T']], [t('keys.cover'), ['C']],
+      [t('keys.jump'), [t('kbd.space')]], [t('keys.standUp'), [t('kbd.space'), t('kbd.space')]], [t('keys.walk'), ['W', 'A', 'S', 'D']], [t('keys.sit'), [t('kbd.shift')]],
+      ...(canCycleSeats(snap) ? [[t('keys.otherSeat'), ['Tab']] as [string, string[]]] : []),
     ] },
     { group: t('keys.group.truco'), rows: [[t('keys.accept'), ['↵']], [t('keys.decline'), ['X']], [t('keys.raiseMore'), ['R']]] },
     { group: t('keys.group.menu'), rows: [[t('keys.menu'), ['Esc']]] },

@@ -85,10 +85,12 @@ describe('parseClientMessage: as jogadas', () => {
 
 describe('parseClientMessage: fantasmas', () => {
   test('presença leva posição no chão e olhar, todos números finitos', () => {
-    expect(parseClientMessage(JSON.stringify({ type: 'presence', presence: { x: 1.5, z: -2, yaw: 0.3, pitch: -0.1 } }))).toEqual({ type: 'presence', presence: { x: 1.5, z: -2, yaw: 0.3, pitch: -0.1 } });
-    expect(parseClientMessage(JSON.stringify({ type: 'presence', presence: { x: 1, z: 2, yaw: 0 } }))).toBeNull();
-    expect(parseClientMessage(JSON.stringify({ type: 'presence', presence: { x: '1', z: 2, yaw: 0, pitch: 0 } }))).toBeNull();
-    expect(parseClientMessage(JSON.stringify({ type: 'presence', presence: { x: 1e9, z: 2, yaw: 0, pitch: 0 } }))).toBeNull();
+    expect(parseClientMessage(JSON.stringify({ type: 'presence', presence: { x: 1.5, y: 0.4, z: -2, yaw: 0.3, pitch: -0.1 } }))).toEqual({ type: 'presence', presence: { x: 1.5, y: 0.4, z: -2, yaw: 0.3, pitch: -0.1 } });
+    expect(parseClientMessage(JSON.stringify({ type: 'presence', presence: { x: 1, z: 2, yaw: 0, pitch: 0 } }))).toBeNull();
+    expect(parseClientMessage(JSON.stringify({ type: 'presence', presence: { x: 1, y: -1, z: 2, yaw: 0, pitch: 0 } }))).toBeNull();
+    expect(parseClientMessage(JSON.stringify({ type: 'presence', presence: { x: 1, y: 0, z: 2, yaw: 0 } }))).toBeNull();
+    expect(parseClientMessage(JSON.stringify({ type: 'presence', presence: { x: '1', y: 0, z: 2, yaw: 0, pitch: 0 } }))).toBeNull();
+    expect(parseClientMessage(JSON.stringify({ type: 'presence', presence: { x: 1e9, y: 0, z: 2, yaw: 0, pitch: 0 } }))).toBeNull();
     expect(parseClientMessage(JSON.stringify({ type: 'presence' }))).toBeNull();
   });
 

@@ -82,9 +82,21 @@ _Evitar_: usuário, login, conta
 Pessoa na sala sem cadeira. Anda livremente pela mesa, é vista por todos e não interage com o jogo. Vê todas as cartas por padrão; a sala pode esconder. Entre mãos, pode sentar no lugar de um bot e entrar na partida.
 _Evitar_: espectador, observador, viewer
 
+**Boneco** (`buddy`):
+O corpo de quem está na mesa, pessoa ou bot. Quem senta aparece sentado na cadeira; um fantasma anda por aí, e todos o veem. O boneco fala, olha, reage ao jogo e veste um molho.
+_Evitar_: avatar, personagem, modelo, skin, char
+
+**Molho** (`outfit`):
+O visual de um boneco: cor, chapéu, cabelo, barba, óculos, roupa, calçado e o que segura nas mãos. Vem do apelido: o mesmo apelido tem o mesmo molho em toda tela e toda sala, sem ninguém escolher nada.
+_Evitar_: traje, roupa, visual, skin, preset, outfit (em português)
+
 **Presença** (`presence`):
-Onde uma pessoa está na mesa e para onde olha. Sai de cada aba até dez vezes por segundo e chega às outras por fora do estado da sala; não conta como atividade. De um fantasma, os outros usam a posição e o olhar; de quem senta, só o olhar (a posição é a da cadeira).
+Onde uma pessoa está na mesa (inclusive a altura, quando pula) e para onde olha. Sai de cada aba até dez vezes por segundo e chega às outras por fora do estado da sala; não conta como atividade. De um fantasma ou de quem está de pé, os outros usam a posição e o olhar; de quem senta, o olhar e quanto **se inclina** (`lean`) sobre a mesa.
 _Evitar_: posição, tracking, telemetria
+
+**De pé** (`standing`):
+Pessoa sentada que se levantou da cadeira. Anda e pula pela mesa como um fantasma, sobe na mesa se quiser, e continua jogando pela cadeira dela, que fica com as cartas na frente da cadeira vazia. Senta de novo quando volta para perto da cadeira. Ficar de pé não conta como atividade.
+_Evitar_: fantasma, passear, AFK
 
 **Bot** (`bot`):
 Ocupante de cadeira controlado pelo servidor. Preenche cadeiras vazias e joga pela cadeira de quem cai (depois de vinte segundos) ou fica parada (depois de um minuto, quando outra pessoa sentada passa a cadeira), até a pessoa voltar ou agir; a cadeira continua sendo dela.
