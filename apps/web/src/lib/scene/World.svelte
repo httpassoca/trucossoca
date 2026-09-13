@@ -3,11 +3,11 @@
   import type { Seat } from '@truco/rules';
   import { onMount } from 'svelte';
   import * as THREE from 'three';
-  import { actingSeat, bus } from '../controller';
+  import { bus, myTurn } from '../controller';
   import { installPointerLock } from '../input';
-  import { game, NAMES, ui } from '../state.svelte';
+  import { live, NAMES, ui } from '../state.svelte';
   import { buildCards, makeCharacter, PRESETS, sayTo, seatDir, TABLE_R, TABLE_TOP, type Character } from './builders';
-  import { BASE_PITCH, CAM_DIST, CAM_H, look, resetLook } from './camera';
+  import { BASE_PITCH, CAM_DIST, CAM_H, look } from './camera';
   import { aimHead } from './gaze';
   import { layoutCards } from './layout';
   import { seatAngle } from './builders';
@@ -25,12 +25,11 @@
   const clock = new THREE.Clock();
 
   bus.say = (seat, text) => sayTo(chars[seat], text);
-  bus.resetLook = resetLook;
 
   onMount(() => installPointerLock(canvas));
 
-  // relayout sempre que o estado do jogo (ou a cadeira/carta escolhida) muda
-  $effect(() => { void ui.tick; void ui.view; void ui.sel; layoutCards(game, ui, cards); });
+  // relayout sempre que a mesa muda de snapshot (ou a cadeira/carta escolhida)
+  $effect(() => { const s = live.snap; layoutCards(s.game, { view: ui.view, sel: ui.sel, myTurn: myTurn(s, ui.view) }, cards); });
 
   useTask(() => {
     const now = performance.now(), t = clock.getElapsedTime();
@@ -47,8 +46,8 @@
     look.yaw += (look.tyaw - look.yaw) * 0.25; look.pitch += (look.tpitch - look.pitch) * 0.25;
     cam.rotation.set(BASE_PITCH + look.pitch, seatAngle(ui.view) + look.yaw, 0, 'YXZ');
 
-    const acting = game.hand && !game.over && game.hand.phase !== 'over' ? actingSeat() : -1;
-    const ctx = { game, view: ui.view, camera: cam, chars, cards, lastPlay: bus.lastPlay, acting };
+    const snap = live.snap, acting = snap.acting;
+    const ctx = { game: snap.game, view: ui.view, camera: cam, chars, cards, lastPlay: bus.lastPlay, acting };
     chars.forEach((c, i) => {
       c.head.visible = c.seat !== ui.view;
       c.label.visible = c.seat !== ui.view && c.seat !== acting;

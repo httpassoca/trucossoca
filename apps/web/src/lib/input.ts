@@ -1,7 +1,6 @@
-import { coverAllowed } from '@truco/rules';
-import { canHumanRaise, doPlay, doRaise, humanControls, promptAct, setView } from './controller';
+import { mayRaise, myTurn, promptAct, promptOf, setView } from './controller';
 import { look } from './scene/camera';
-import { game, ui } from './state.svelte';
+import { live, table, ui } from './state.svelte';
 
 let canvasEl: HTMLCanvasElement | null = null;
 export const isLocked = () => !!canvasEl && document.pointerLockElement === canvasEl;
@@ -41,22 +40,21 @@ export function onKey(e: KeyboardEvent) {
     return;
   }
   if (ui.menuOpen) { if (e.key === 'Enter') resume(); return; }
-  const h = game.hand; if (!h) return;
+  const snap = live.snap, h = snap.game.hand; if (!h) return;
   if (e.key === 'Tab') { e.preventDefault(); setView(((ui.view + 1) % 4) as 0 | 1 | 2 | 3); return; }
-  if (ui.prompt) {
-    const p = ui.prompt;
+  const p = promptOf(snap);
+  if (p) {
     if (e.key === 'Enter' || e.key === ' ') promptAct(p.kind === 'respond' ? 'accept' : p.kind === 'dez' ? 'play' : 'new');
     else if (e.key === 'x' || e.key === 'X') promptAct(p.kind === 'respond' ? 'decline' : 'run');
     else if (e.key === 'r' || e.key === 'R') promptAct('raise');
     return;
   }
   const cards = h.cards[ui.view];
-  const myTurn = h.phase === 'play' && humanControls(ui.view) && h.turn === ui.view;
   if (e.key === 'ArrowLeft') { ui.sel = Math.max(0, ui.sel - 1); return; }
   if (e.key === 'ArrowRight') { ui.sel = Math.min(cards.length - 1, ui.sel + 1); return; }
-  if (e.key === 'c' || e.key === 'C') { ui.coverNext = !ui.coverNext && coverAllowed(game); return; }
-  if (e.key === 't' || e.key === 'T') { if (canHumanRaise()) doRaise(ui.view); return; }
-  if (!myTurn) return;
-  if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); if (cards[ui.sel]) doPlay(ui.view, cards[ui.sel], ui.coverNext); return; }
-  const n = parseInt(e.key); if (n >= 1 && n <= 3 && cards[n - 1]) doPlay(ui.view, cards[n - 1], ui.coverNext);
+  if (e.key === 'c' || e.key === 'C') { table.toggleCover(); return; }
+  if (e.key === 't' || e.key === 'T') { if (mayRaise(snap, ui.view)) table.raise(); return; }
+  if (!myTurn(snap, ui.view)) return;
+  if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); if (cards[ui.sel]) table.play(cards[ui.sel]); return; }
+  const n = parseInt(e.key); if (n >= 1 && n <= 3 && cards[n - 1]) table.play(cards[n - 1]);
 }

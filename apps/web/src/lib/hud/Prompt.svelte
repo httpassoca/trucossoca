@@ -1,10 +1,11 @@
 <script lang="ts">
-  import { promptAct } from '../controller';
+  import { promptAct, promptOf } from '../controller';
   import { callName } from '../format';
-  import { game, NAMES, ui } from '../state.svelte';
+  import { live, NAMES } from '../state.svelte';
   import Kbd from './Kbd.svelte';
 
-  const p = $derived(ui.prompt);
+  const game = $derived(live.snap.game);
+  const p = $derived(promptOf(live.snap));
   const q = $derived(game.hand?.pending ?? null);
   const more = $derived(q && q.toIdx + 1 < game.rules.ladder.length ? callName(game.rules.ladder[q.toIdx + 1]).replace('!', '') : null);
 </script>

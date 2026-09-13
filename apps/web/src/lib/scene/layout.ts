@@ -1,6 +1,5 @@
 import { strength, teamOf, type CardId, type GameState, type Play, type Seat } from '@truco/rules';
 import * as THREE from 'three';
-import { humanControls } from '../controller';
 import { seatAngle, seatDir, seatRight, TABLE_TOP, type CardGroup } from './builders';
 import { throwSpot, type Spot } from './throw';
 
@@ -32,20 +31,20 @@ function setTarget(card: CardGroup, seat: Seat, dist: number, lx: number, ly: nu
   card.userData.tq.setFromAxisAngle(Y, seatAngle(seat)).multiply(_q.setFromEuler(_e.set(ex, ey, 0, 'YXZ')));
 }
 
-export interface LayoutUi { view: Seat; sel: number }
+/** `myTurn`: a pessoa joga pela cadeira vista agora (levanta a carta escolhida). */
+export interface LayoutUi { view: Seat; sel: number; myTurn: boolean }
 
 export function layoutCards(g: GameState, ui: LayoutUi, cards: Record<CardId, CardGroup>) {
   const h = g.hand; if (!h) return;
   const handKey = String(g.handNo);
   if (handKey !== spotsHandKey) { spots.clear(); spotsHandKey = handKey; }
   const blind = h.special === 'ferro' && g.rules.maoDeFerroBlind && h.phase !== 'over';
-  const myTurn = h.phase === 'play' && humanControls(ui.view) && h.turn === ui.view;
   for (let s = 0 as Seat; s < 4; s = (s + 1) as Seat) {
     const held = h.cards[s];
     const peek = h.revealPartner && teamOf(s) === h.decider && s === (ui.view + 2) % 4;
     held.forEach((id, i) => {
       const lx = (i - (held.length - 1) / 2) * 0.21;
-      const lift = s === ui.view && myTurn && i === ui.sel ? 0.045 : 0;
+      const lift = s === ui.view && ui.myTurn && i === ui.sel ? 0.045 : 0;
       cards[id].userData.tb = 1;
       if (blind) setTarget(cards[id], s, 0.8, lx, TABLE_TOP + 0.11 + lift, -lift * 0.6, Math.PI / 3, 0);
       else setTarget(cards[id], s, 0.8, lx, TABLE_TOP + 0.11 + lift, -lift * 0.6, -Math.PI / 3, peek ? Math.PI : 0);

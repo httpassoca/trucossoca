@@ -22,9 +22,12 @@ packages/rules   motor puro em TypeScript — sem DOM, sem three.js. Vai virar a
   test/            bun test
 
 apps/web         Vite + Svelte 5 + Threlte 8 + three, HUD em dssoca
-  src/lib/state.svelte.ts   estado reativo: `game` (motor) e `ui` (câmera, seleção, prompts, menu)
-  src/lib/controller.ts     única porta de mutação do jogo: aplica ações, drena eventos, agenda bots
-  src/lib/input.ts          teclado + pointer lock
+  src/lib/table/table.ts    interface `Table` (ADR 0003): snapshot imutável, cadeira local, ações, assinatura de eventos
+  src/lib/table/local.ts    `LocalTable`: motor e bots no navegador, com ritmo dos bots e pausa entre mãos (timers injetáveis)
+  src/lib/state.svelte.ts   estado reativo: `table`, `live.snap` (espelho do snapshot) e `ui` (câmera, seleção, menu, regras)
+  src/lib/controller.ts     cola entre a mesa e a interface: log, falas, câmera, prompt derivado do snapshot
+  src/lib/input.ts          teclado + pointer lock — só fala com `Table`
+  test/                     bun test: `LocalTable` joga uma partida inteira contra bots sem DOM
   src/lib/format.ts         eventos → texto (PT-BR)
   src/lib/scene/            builders (personagens/cartas procedurais), throw (onde a carta cai), layout, gaze, World.svelte
   src/lib/hud/              Score, Seats, Keys, Log, Prompt, Menu (markup vanilla do dssoca)
