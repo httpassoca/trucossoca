@@ -120,6 +120,19 @@ describe('lobby: nomes das duplas, regras e fantasmas', () => {
     expect(snap.game).toBeNull();
   });
 
+  test('a sala pode nascer com as regras e o cenário que quem a abriu pediu', () => {
+    const s = new Sim();
+    const rules: Rules = { ...defaultRules, target: 6, allowCovered: false };
+    s.state = createRoom('ABCD', T0, {}, { rules, scenery: 'graveyard' });
+    s.join('t1', 'Zé');
+    const snap = s.snapshotFor('t1')!;
+    expect(snap.rules).toEqual(rules);
+    expect(snap.rules.ladder).not.toBe(rules.ladder); // copiada, não compartilhada
+    expect(snap.scenery).toBe('graveyard');
+    expect(createRoom('ABCD', T0, {}, { scenery: 'graveyard' }).rules).toEqual(defaultRules);
+    expect(createRoom('ABCD', T0, {}, { rules }).scenery).toBe('bar');
+  });
+
   test('qualquer pessoa troca o cenário no lobby; durante a partida ele fica trancado', () => {
     const s = new Sim();
     s.join('t1', 'Zé');

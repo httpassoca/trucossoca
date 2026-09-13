@@ -1,13 +1,14 @@
 import { CLOSE_REPLACED, CLOSE_ROOM_ENDED, parseClientMessage, PRESENCE_INTERVAL, SOCKET_IDLE_TIMEOUT, type Presence } from '@truco/protocol';
 import type { ServerWebSocket } from 'bun';
 import type { Log } from './log';
-import { createRoom, DEFAULT_PACE, step, timerKey, type RoomInput, type RoomPace, type RoomState } from './room';
+import { createRoom, step, timerKey, type RoomInit, type RoomInput, type RoomPace, type RoomState } from './room';
 
 /**
- * `now`: hora de nascimento; `pace`: ritmo da mesa; `silence`: quanto um socket pode ficar sem mandar nada antes de ser
- * derrubado; `presenceInterval`: o mínimo entre duas presenças repassadas da mesma pessoa.
+ * `now`: hora de nascimento; `pace`: ritmo da mesa (completa os padrões); `init`: regras e cenário de nascimento;
+ * `silence`: quanto um socket pode ficar sem mandar nada antes de ser derrubado; `presenceInterval`: o mínimo entre
+ * duas presenças repassadas da mesma pessoa.
  */
-export interface HostOptions { now?: number; pace?: RoomPace; silence?: number; presenceInterval?: number }
+export interface HostOptions { now?: number; pace?: Partial<RoomPace>; init?: RoomInit; silence?: number; presenceInterval?: number }
 
 export interface SocketData { code: string; token: string }
 export type Socket = ServerWebSocket<SocketData>;
@@ -37,7 +38,7 @@ export class RoomHost {
     const now = opts.now ?? Date.now();
     this.silence = opts.silence ?? SOCKET_IDLE_TIMEOUT;
     this.presenceInterval = opts.presenceInterval ?? PRESENCE_INTERVAL;
-    this.state = createRoom(code, now, opts.pace ?? DEFAULT_PACE);
+    this.state = createRoom(code, now, opts.pace, opts.init);
     this.syncTimers(now);
     log('room.created', { room: code });
   }

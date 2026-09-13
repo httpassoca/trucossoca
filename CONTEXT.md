@@ -19,7 +19,7 @@ A sequência de mãos até uma dupla atingir a pontuação alvo.
 _Evitar_: jogo, match
 
 **Cartas** (`cards`):
-As cartas que uma cadeira segura durante a mão.
+As cartas que uma cadeira segura durante a mão. Ficam na mão de quem senta, baixas e viradas para baixo; a pessoa segura uma tecla para **olhar** (`peek`) as suas, e todo mundo vê que ela está olhando. Quem se levanta deixa as suas na mesa, na frente da cadeira.
 _Evitar_: mão (no sentido de cartas seguradas), hand
 
 **Cadeira** (`seat`):
@@ -31,8 +31,16 @@ As duas cadeiras opostas que pontuam juntas. As duplas têm nome, editável por 
 _Evitar_: time, equipe, lado
 
 **Mão** (posição) (`mao`):
-A cadeira que abre a mão; gira uma cadeira por mão. A última cadeira a jogar é o **pé**.
-_Evitar_: dealer, primeiro, opener
+A cadeira que abre a mão: a da direita do carteador. A última cadeira a jogar é o **pé**, que é o próprio carteador.
+_Evitar_: primeiro, opener
+
+**Carteador** (`dealer`):
+A cadeira que embaralha e dá as cartas da mão. Sorteada na primeira mão de cada partida e de cada revanche; depois passa para a direita a cada mão, ou seja, a mão de uma rodada é o carteador da seguinte. Quem está à sua esquerda **corta** (`cut`) o baralho; o carteador dá uma carta por vez, começando pela direita, até cada cadeira ter três. É o pé da mão que dá. Ninguém aperta nada para embaralhar, cortar ou dar: acontece sozinho.
+_Evitar_: dealer (em português), distribuidor, banca, quem dá
+
+**Monte** (`stock`):
+As cartas que sobram depois de dar as três de cada cadeira. Fica na mesa na frente da mão, que será o próximo carteador. Ninguém vê o que tem nele.
+_Evitar_: baralho (é o conjunto das 40), pilha, deck, resto
 
 **Manilha** (`manilha`):
 Carta de força fixa acima de todas as outras. No Mineiro: zap (4♣), sete de copas, espadilha (A♠), sete de ouros, nessa ordem.
@@ -75,7 +83,7 @@ O lugar onde uma turma se reúne para jogar. Qualquer pessoa cria uma sala e ent
 _Evitar_: lobby, mesa (a mesa é o objeto 3D dentro da sala), partida
 
 **Cenário** (`scenery`):
-O lugar ao redor da mesa: o chão, o que se vê em volta, a luz, a mesa e as cadeiras, e o desenho do baralho. É escolhido por sala, no lobby, por qualquer pessoa, e fica trancado enquanto uma partida corre; offline, é escolhido na tela e lembrado no navegador. Hoje existem dois: o **bar de esquina** (`bar`), o padrão, um boteco na calçada no fim de tarde, e o **cemitério** (`graveyard`), uma noite gótica sob a lua de sangue.
+O lugar ao redor da mesa: o chão, o que se vê em volta, a luz, a mesa e as cadeiras, e o desenho do baralho. É escolhido por sala, no lobby, por qualquer pessoa, e fica trancado enquanto uma partida corre; offline, é escolhido na tela e lembrado no navegador. Hoje existem dois: o **bar de praia** (`bar`), o padrão, um boteco na areia no fim de tarde, e o **cemitério** (`graveyard`), uma noite gótica sob a lua de sangue.
 _Evitar_: mapa, map, fase, level, tema, skin, mundo
 
 **Apelido** (`nickname`):
@@ -83,7 +91,7 @@ O nome que uma pessoa escolhe ao entrar na sala. Não há conta nem cadastro.
 _Evitar_: usuário, login, conta
 
 **Fantasma** (`ghost`):
-Pessoa na sala sem cadeira. Anda livremente pela mesa, é vista por todos e não interage com o jogo. Vê todas as cartas por padrão; a sala pode esconder. Entre mãos, pode sentar no lugar de um bot e entrar na partida.
+Pessoa na sala sem cadeira. Anda livremente pela mesa, é vista por todos e não interage com o jogo. Vê todas as cartas por padrão; a sala pode esconder. Entre mãos, pode sentar no lugar de um bot e entrar na partida. Offline, é quem escolhe assistir uma mesa de quatro bots; senta do mesmo jeito.
 _Evitar_: espectador, observador, viewer
 
 **Boneco** (`buddy`):
@@ -95,7 +103,7 @@ O visual de um boneco: cor, chapéu, cabelo, barba, óculos, roupa, calçado e o
 _Evitar_: traje, roupa, visual, skin, preset, outfit (em português)
 
 **Presença** (`presence`):
-Onde uma pessoa está na mesa (inclusive a altura, quando pula) e para onde olha. Sai de cada aba até dez vezes por segundo e chega às outras por fora do estado da sala; não conta como atividade. De um fantasma ou de quem está de pé, os outros usam a posição e o olhar; de quem senta, o olhar e quanto **se inclina** (`lean`) sobre a mesa.
+Onde uma pessoa está na mesa (inclusive a altura, quando pula) e para onde olha. Sai de cada aba até dez vezes por segundo e chega às outras por fora do estado da sala; não conta como atividade. De um fantasma ou de quem está de pé, os outros usam a posição e o olhar; de quem senta, o olhar, quanto **se inclina** (`lean`) sobre a mesa e se está **olhando as cartas** (`peek`).
 _Evitar_: posição, tracking, telemetria
 
 **De pé** (`standing`):

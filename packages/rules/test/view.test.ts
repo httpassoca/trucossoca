@@ -1,11 +1,13 @@
 import { describe, expect, test } from 'bun:test';
 import { createGame, defaultRules, eventsFor, playCard, startHand, takeEvents, viewFor, type CardId, type GameEvent, type PlayView } from '../src';
+import { deckFor } from './deck';
 
 const fixed = () => 0.5;
 
+/** Mão dada pela cadeira 3: a 0 abre. */
 function dealt() {
   const g = createGame();
-  startHand(g, fixed);
+  startHand(g, fixed, { dealer: 3 });
   return g;
 }
 
@@ -29,7 +31,7 @@ describe('viewFor: o que cada um vê da mão', () => {
   test('na decisão da mão de dez a cadeira vê as cartas do parceiro, e só ela', () => {
     const g = createGame();
     g.scores = [10, 0];
-    startHand(g, fixed);
+    startHand(g, fixed, { dealer: 3 });
     expect(g.hand!.special).toBe('dez');
     const mine = viewFor(g, 2).hand!;
     expect(mine.cards[0]).toEqual(g.hand!.cards[0]);
@@ -52,15 +54,21 @@ describe('viewFor: o que cada um vê da mão', () => {
   test('sem mão, a visão tem mão nula', () => {
     expect(viewFor(createGame(), 0).hand).toBeNull();
   });
+
+  test('a visão leva o carteador e o mão, como o estado', () => {
+    const g = createGame(); startHand(g, () => 0.3);
+    const v = viewFor(g, 'none');
+    expect(v.dealer).toBe(1);
+    expect(v.mao).toBe(2);
+    expect(viewFor(g, 0).dealer).toBe(1);
+  });
 });
 
 /** Mão em que a cadeira 0 já ganhou a 1ª vaza e a cadeira 0 abre a 2ª com carta coberta. */
 function withCoveredPlay() {
   const g = createGame({ ...defaultRules, coverFromTrick: 2 });
   const cards: CardId[][] = [['4c', '4d', '4h'], ['Kc', '4s', '5d'], ['Ks', '5h', '5s'], ['2c', '6c', '6d']];
-  const dealt: CardId[] = [];
-  for (let i = 0; i < 3; i++) for (let s = 0; s < 4; s++) dealt.push(cards[s][i]);
-  startHand(g, fixed, { deck: [...dealt].reverse() });
+  startHand(g, fixed, { deck: deckFor(cards, 0), dealer: 3 });
   playCard(g, 0, '4c'); playCard(g, 1, 'Kc'); playCard(g, 2, 'Ks'); playCard(g, 3, '2c');
   takeEvents(g);
   playCard(g, 0, '4d', true, () => 0.25);

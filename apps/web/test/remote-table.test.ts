@@ -154,7 +154,7 @@ describe('RemoteTable: a mesa', () => {
     const got: [TableSnapshot, GameEvent[]][] = [];
     table.subscribe((s, ev) => got.push([s, ev]));
     const { snapshot } = playing(1);
-    const events: GameEvent[] = [{ type: 'newHand', mao: 0, special: 'normal', value: 2, decider: null }];
+    const events: GameEvent[] = [{ type: 'newHand', mao: 0, dealer: 3, cutter: 2, special: 'normal', value: 2, decider: null }];
     last().receive({ type: 'events', events });
     expect(got).toHaveLength(0);
     last().receive({ type: 'snapshot', snapshot });
@@ -169,7 +169,7 @@ describe('RemoteTable: a mesa', () => {
     const { table, last } = setup();
     table.connect(); last().open();
     const { snapshot } = playing(1);
-    const events: GameEvent[] = [{ type: 'newHand', mao: 0, special: 'normal', value: 2, decider: null }];
+    const events: GameEvent[] = [{ type: 'newHand', mao: 0, dealer: 3, cutter: 2, special: 'normal', value: 2, decider: null }];
     last().receive({ type: 'events', events });
     last().receive({ type: 'snapshot', snapshot });
     const got: GameEvent[][] = [];

@@ -1,10 +1,9 @@
 <script lang="ts">
-  import { IDLE_HANDOFF, NICKNAME_MAX, SCENERIES, TEAM_NAME_MAX, type RoomMemberView, type SceneryId } from '@truco/protocol';
+  import { IDLE_HANDOFF, NICKNAME_MAX, TEAM_NAME_MAX, type RoomMemberView } from '@truco/protocol';
   import { teamOf, type Team } from '@truco/rules';
   import { onMount, untrack } from 'svelte';
   import LangSwitch from '../hud/LangSwitch.svelte';
-  import RulesForm from '../hud/RulesForm.svelte';
-  import Seg from '../hud/Seg.svelte';
+  import RulesPanel from '../hud/RulesPanel.svelte';
   import Switch from '../hud/Switch.svelte';
   import type { MsgKey } from '../i18n';
   import { t } from '../i18n.svelte';
@@ -58,7 +57,6 @@
   const ghosts = $derived((room?.members ?? []).filter((m) => m.seat === null));
   const myTeam = $derived(me ? teamOfMember(me) : null);
   const canStart = $derived(live && !!me && me.seat !== null);
-  const sceneryOptions = $derived(SCENERIES.map((s) => [s, t(`scenery.${s}`)] as [SceneryId, string]));
   const seated = $derived((room?.members ?? []).filter((m) => m.seat !== null).sort((a, b) => a.seat! - b.seat!));
   /** há quanto tempo esta pessoa não age, agora */
   const idleFor = (m: RoomMemberView) => m.idle + Math.max(0, now - snapAt);
@@ -125,7 +123,7 @@
           <div class="title">{t(`gone.${GONE[remote.reason]}.title`)}</div>
           <p class="msg">{t(`gone.${GONE[remote.reason]}.msg`)}</p>
           <div class="act">
-            <button class="ss-btn primary" type="button" onclick={openRoom}>{t('room.openNew')}</button>
+            <button class="ss-btn primary" type="button" onclick={() => openRoom()}>{t('room.openNew')}</button>
             <button class="ss-btn ghost" type="button" onclick={() => navigate('/')}>{t('nav.home')}</button>
           </div>
         </div>
@@ -216,15 +214,11 @@
 
         <div class="tm-section">
           <h4>{t('room.rules')} <span style="text-transform:none;letter-spacing:0">{t('room.rules.sub')}</span></h4>
-          <RulesForm rules={room.rules} onchange={(r) => table.setRules(r)} readonly={!live} />
+          <RulesPanel rules={room.rules} onchange={(r) => table.setRules(r)} readonly={!live} scenery={room.scenery} onscenery={(s) => table.setScenery(s)} sceneryLocked={!live} />
           <div class="tm-rules" style="margin-top:6px">
             <div class="tm-line">
               <span>{t('room.ghostsSee')}</span>
               <Switch label={t('room.ghostsSee')} on={room.ghostsSeeCards} disabled={!live} ontoggle={(v) => table.setGhostsSeeCards(v)} />
-            </div>
-            <div class="tm-line">
-              <span>{t('scenery.label')}</span>
-              <Seg value={room.scenery} options={sceneryOptions} disabled={!live} onselect={(s) => table.setScenery(s)} />
             </div>
           </div>
         </div>

@@ -28,6 +28,13 @@ describe('tabela de tradução', () => {
     expect(translate('en', 'home.open')).toBe('Open a room');
     expect(translate('pt', 'log.newHand', { name: 'Zé' })).toBe('Nova mão. Zé é o mão.');
     expect(translate('en', 'log.newHand', { name: 'Zé' })).toContain('Zé');
+    expect(translate('pt', 'log.newHand.dealt', { dealer: 'Ana', name: 'Zé' })).toBe('Mão nova: Ana carteia, Zé é mão.');
+  });
+
+  test('o placar numa linha: o valor da mão, a vez e as mãos especiais em português nas duas línguas', () => {
+    expect(translate('pt', 'score.vale', { value: 4 })).toBe('vale 4');
+    expect(translate('en', 'score.vale', { value: 4 })).toBe('worth 4');
+    for (const lang of LANGS as Lang[]) { expect(translate(lang, 'score.dez')).toBe('dez'); expect(translate(lang, 'score.ferro')).toBe('ferro'); }
   });
 
   test('os dois textos de cada chave usam os mesmos parâmetros', () => {

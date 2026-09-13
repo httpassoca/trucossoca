@@ -32,6 +32,13 @@ export function box(w: number, h: number, d: number, mat: THREE.Material) {
 export function cyl(rt: number, rb: number, h: number, mat: THREE.Material, seg = 12) {
   const m = new THREE.Mesh(new THREE.CylinderGeometry(rt, rb, h, seg), mat); m.castShadow = m.receiveShadow = true; return m;
 }
+export function sph(r: number, mat: THREE.Material, seg = 12) {
+  const m = new THREE.Mesh(new THREE.SphereGeometry(r, seg, Math.max(6, Math.round(seg * 0.75))), mat); m.castShadow = m.receiveShadow = true; return m;
+}
+/** Cápsula em pé (eixo y): raio `r`, `len` entre as calotas. */
+export function capsule(r: number, len: number, mat: THREE.Material, seg = 10) {
+  const m = new THREE.Mesh(new THREE.CapsuleGeometry(r, len, 4, seg), mat); m.castShadow = m.receiveShadow = true; return m;
+}
 /** Todo mesh da árvore projeta e recebe sombra (menos o que `skip` disser). */
 export function shadows(root: THREE.Object3D, skip?: (o: THREE.Mesh) => boolean) {
   root.traverse((o) => { if (o instanceof THREE.Mesh && !(skip && skip(o))) o.castShadow = o.receiveShadow = true; });

@@ -1,18 +1,17 @@
 import { describe, expect, test } from 'bun:test';
-import { IDLE_HANDOFF, type ClientMessage, type RoomSnapshot, type ServerMessage } from '@truco/protocol';
-import { canRaise, defaultRules, teamOf, type CardId, type GameEvent, type PlayView, type Seat, type Team } from '@truco/rules';
-import { BOT_DECISION_EXTRA, createRoom, DEFAULT_PACE, DISCONNECT_GRACE, step, type RoomEvent, type RoomInput, type RoomState, type RoomTimer } from '../src/room';
+import { DEAL_MS, IDLE_HANDOFF, type ClientMessage, type RoomSnapshot, type ServerMessage } from '@truco/protocol';
+import { canRaise, defaultRules, teamOf, thinkTime, type CardId, type GameEvent, type PlayView, type Seat, type Team } from '@truco/rules';
+import { deckFor } from '../../../packages/rules/test/deck';
+import { createRoom, DEFAULT_PACE, DISCONNECT_GRACE, step, type RoomEvent, type RoomInput, type RoomPace, type RoomState, type RoomTimer } from '../src/room';
 
 const T0 = 1_000_000;
 /** Com 0.5 os bots são previsíveis: nunca trucam nem cobrem; aceitam com A ou melhor; jogam a mão de dez com 2 ou melhor. */
 const fixedRng = () => 0.5;
-
-/** baralho onde os últimos 12 são as cartas de cada cadeira (deal faz pop): seat s recebe deck[-1-s], deck[-5-s], deck[-9-s] */
-function deckFor(cards: CardId[][]): CardId[] {
-  const dealt: CardId[] = [];
-  for (let i = 0; i < 3; i++) for (let s = 0; s < 4; s++) dealt.push(cards[s][i]);
-  return [...dealt].reverse();
-}
+/** O carteador da primeira mão de toda partida daqui: a cadeira 0 é o mão da mão 1, a 1 da mão 2, e assim por diante. */
+const FIRST_DEALER: Seat = 3;
+const maoOf = (handNo: number): Seat => ((FIRST_DEALER + handNo) % 4) as Seat;
+/** Quanto um bot pensa com o rng fixo, no ritmo da sala: 1750 ms para jogar, 3000 ms para decidir, vezes `think`. */
+const think = (kind: 'play' | 'decision', pace: RoomPace = DEFAULT_PACE) => Math.round(thinkTime(fixedRng, kind) * pace.think);
 
 /** A sala com as entradas enfileiradas, os baralhos de cada mão fixados e tudo o que saiu guardado por destinatário. */
 class Sim {
@@ -20,10 +19,12 @@ class Sim {
   out: { to: string; message: ServerMessage }[] = [];
   events: RoomEvent[] = [];
   decks: Record<number, CardId[][]> = {};
+  /** o carteador da primeira mão; undefined deixa o rng sortear */
+  dealer: Seat | undefined = FIRST_DEALER;
   constructor(public now = T0) { this.state = createRoom('ABCD', now); }
   feed(input: RoomInput, at = this.now) {
     this.now = at;
-    const r = step(this.state, input, at, { rng: fixedRng, deck: (n) => (this.decks[n] ? deckFor(this.decks[n]) : undefined) });
+    const r = step(this.state, input, at, { rng: fixedRng, dealer: this.dealer, deck: (n) => (this.decks[n] ? deckFor(this.decks[n], maoOf(n)) : undefined) });
     this.state = r.state; this.out.push(...r.out); this.events.push(...r.events);
     return r;
   }
@@ -126,6 +127,24 @@ describe('partida online: uma partida inteira roteirizada', () => {
     expect(s.snapshotFor('t3')!.game!.over).toBe(true);
   });
 
+  test('o carteador da primeira mão é o fixado; depois passa para a direita, e cada newHand diz quem dá, quem corta e quem abre', () => {
+    const s = scripted();
+    run(s);
+    const hands = s.eventsFor('t1').filter((e): e is GameEvent & { type: 'newHand' } => e.type === 'newHand');
+    expect(hands.map((e) => [e.dealer, e.cutter, e.mao])).toEqual([[3, 2, 0], [0, 3, 1], [1, 0, 2], [2, 1, 3], [3, 2, 0]]);
+    expect(s.snapshotFor('t3')!.game!.dealer).toBe(3);
+  });
+
+  test('sem carteador fixado, o rng sorteia o da primeira mão', () => {
+    const s = new Sim();
+    s.dealer = undefined;
+    s.join('t1', 'Zé'); s.sit('t1', 0);
+    s.start('t1');
+    expect(s.game.dealer).toBe(2); // Math.floor(0.5 * 4)
+    expect(s.game.mao).toBe(3);
+    expect(s.eventsFor('t1')[0]).toMatchObject({ type: 'newHand', dealer: 2, cutter: 1, mao: 3 });
+  });
+
   test('cada pessoa recebe o mesmo lote de eventos, na mesma ordem, e a mesma semente de cada jogada', () => {
     const s = scripted();
     run(s);
@@ -213,11 +232,11 @@ describe('partida online: jogadas recusadas', () => {
 });
 
 describe('partida online: bots no servidor', () => {
-  test('quando a vez é de um bot, a sala pede um timer com o ritmo configurado; ao vencer, o bot joga', () => {
+  test('quando a vez é de um bot, a sala pede um timer: na primeira ação da mão ele espera as cartas serem dadas e depois pensa; ao vencer, joga', () => {
     const s = new Sim();
     s.join('t1', 'Zé'); s.sit('t1', 1); // o mão da 1ª mão é a cadeira 0: um bot
     s.start('t1');
-    expect(s.gameTimer()).toEqual({ kind: 'bot', seat: 0, at: T0 + DEFAULT_PACE.botDelay });
+    expect(s.gameTimer()).toEqual({ kind: 'bot', seat: 0, at: T0 + DEAL_MS + think('play') });
     s.out = [];
     s.fire(s.gameTimer()!);
     const ev = s.eventsFor('t1');
@@ -226,23 +245,43 @@ describe('partida online: bots no servidor', () => {
     expect(s.snapshotFor('t1')!.game!.hand!.turn).toBe(1);
     // agora é a vez da pessoa: nenhum timer da mesa
     expect(s.gameTimer()).toBeUndefined();
+    // Zé joga; o bot seguinte só pensa, as cartas já estão na mão de todo mundo
+    s.say('t1', { type: 'play', id: s.snapshotFor('t1')!.game!.hand!.cards[1][0]!, covered: false });
+    expect(s.gameTimer()).toEqual({ kind: 'bot', seat: 2, at: s.now + think('play') });
   });
 
-  test('o ritmo é configurável por sala e a resposta ao truco demora um pouco mais', () => {
+  test('o ritmo é configurável por sala; responder ao truco é uma decisão, e não espera a coreografia', () => {
     const s = new Sim();
-    s.state = createRoom('ABCD', T0, { botDelay: 100, handPause: 50 });
+    const pace = { think: 0.1, handPause: 50 };
+    s.state = createRoom('ABCD', T0, pace);
     s.join('t1', 'Zé'); s.sit('t1', 0);
     s.decks[1] = SCRIPT[1].cards;
     s.start('t1');
     s.say('t1', { type: 'raise' });
-    expect(s.gameTimer()).toEqual({ kind: 'bot', seat: 1, at: T0 + 100 + BOT_DECISION_EXTRA });
+    expect(s.gameTimer()).toEqual({ kind: 'bot', seat: 1, at: T0 + think('decision', s.state.pace) });
+    expect(think('decision', s.state.pace)).toBe(300);
     s.fire(s.gameTimer()!);
     expect(s.eventsFor('t1').filter((e) => e.type === 'respond')).toEqual([{ type: 'respond', seat: 1, action: 'decline', value: 2, winnerTeam: 0 }]);
     // a mão acabou: a próxima espera a pausa
-    expect(s.gameTimer()).toEqual({ kind: 'nextHand', at: T0 + 100 + BOT_DECISION_EXTRA + 50 });
+    expect(s.gameTimer()).toEqual({ kind: 'nextHand', at: T0 + 300 + 50 });
     s.fire(s.gameTimer()!);
     expect(s.snapshotFor('t1')!.game!.handNo).toBe(2);
     expect(s.eventsFor('t1').filter((e) => e.type === 'newHand')).toHaveLength(2);
+    // a mão 2 abre pela cadeira 1, um bot: espera a coreografia e pensa
+    expect(s.gameTimer()).toEqual({ kind: 'bot', seat: 1, at: T0 + 350 + DEAL_MS + think('play', s.state.pace) });
+  });
+
+  test('o tempo que um bot pensa é sorteado do rng da sala e multiplicado pelo ritmo; a espera pela coreografia também é da sala', () => {
+    const s = new Sim();
+    s.state = createRoom('ABCD', T0, { think: 2 });
+    s.join('t1', 'Zé'); s.sit('t1', 1);
+    s.start('t1');
+    expect(s.gameTimer()).toEqual({ kind: 'bot', seat: 0, at: T0 + DEAL_MS + 2 * 1750 });
+    const quick = new Sim();
+    quick.state = createRoom('ABCD', T0, { deal: 10 });
+    quick.join('t1', 'Zé'); quick.sit('t1', 1);
+    quick.start('t1');
+    expect(quick.gameTimer()).toEqual({ kind: 'bot', seat: 0, at: T0 + 10 + 1750 });
   });
 
   test('um timer da mesa que já não vale (a situação mudou) é ignorado', () => {
@@ -312,8 +351,8 @@ describe('partida online: mão de dez', () => {
     s.out = [];
     s.say('t1', { type: 'decideDez', action: 'run' });
     expect(s.out).toEqual([{ to: 't1', message: { type: 'error', action: 'decideDez', reason: 'illegal' } }]);
-    // a dupla de bots decide pelo timer
-    expect(s.gameTimer()).toMatchObject({ kind: 'bot', seat: 0 });
+    // a dupla de bots decide pelo timer: a decisão é a primeira coisa da mão, então espera as cartas serem dadas
+    expect(s.gameTimer()).toEqual({ kind: 'bot', seat: 0, at: s.now + DEAL_MS + think('decision') });
     s.fire(s.gameTimer()!);
     expect(s.eventsFor('t1').filter((e) => e.type === 'dez')).toEqual([{ type: 'dez', team: 0, action: 'play' }]);
   });
@@ -390,8 +429,8 @@ describe('partida online: ausência', () => {
     s.fire(dropOf(s));
     expect(memberNamed(s, 't2', 'Zé')).toMatchObject({ seat: 0, connected: false, bot: false, botControlled: true });
     expect(s.events).toContainEqual({ type: 'botTakeover', id: 'm1', nickname: 'Zé', seat: 0, cause: 'dropped' });
-    // a cadeira 0 agora é de um bot: a sala pede o timer da mesa e ele joga
-    expect(s.gameTimer()).toEqual({ kind: 'bot', seat: 0, at: T0 + DISCONNECT_GRACE + DEFAULT_PACE.botDelay });
+    // a cadeira 0 agora é de um bot: a sala pede o timer da mesa (ninguém jogou ainda: ele espera as cartas serem dadas) e ele joga
+    expect(s.gameTimer()).toEqual({ kind: 'bot', seat: 0, at: T0 + DISCONNECT_GRACE + DEAL_MS + think('play') });
     s.fire(s.gameTimer()!);
     expect(s.eventsFor('t2').filter((e) => e.type === 'play')).toEqual([expect.objectContaining({ type: 'play', seat: 0 })]);
   });
@@ -449,7 +488,7 @@ describe('partida online: ausência', () => {
 
   test('uma tomada ou retomada durante a pausa entre mãos não adia a mão seguinte', () => {
     const s = new Sim();
-    s.state = createRoom('ABCD', T0, { botDelay: 100, handPause: 5_000 });
+    s.state = createRoom('ABCD', T0, { think: 0.1, handPause: 5_000 });
     s.join('t1', 'Zé'); s.sit('t1', 0); s.join('t2', 'Dita'); s.sit('t2', 0);
     s.decks[1] = SCRIPT[1].cards;
     s.start('t1');
@@ -582,8 +621,8 @@ describe('partida online: fantasmas', () => {
     const hand = s.snapshotFor('t3')!.game!.hand!;
     expect(hand.cards[1].every((c) => c !== null)).toBe(true);
     expect(hand.cards[0]).toEqual([null, null, null]);
-    // e joga pela cadeira 1 quando chega a vez dela (mão 2: Zé abre; depois é a cadeira 1)
-    s.say('t1', { type: 'play', id: strongest(s.snapshotFor('t1')!.game!.hand!.cards[0]), covered: false });
+    // e joga pela cadeira 1 quando chega a vez dela (mão 2: Zé deu as cartas, a cadeira 1 é o mão e abre)
+    expect(s.snapshotFor('t3')!.game).toMatchObject({ dealer: 0, mao: 1 });
     s.out = [];
     s.say('t3', { type: 'play', id: hand.cards[1][0]!, covered: false });
     expect(s.errorsFor('t3')).toEqual([]);

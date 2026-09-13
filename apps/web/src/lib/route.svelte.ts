@@ -1,10 +1,11 @@
-/** Rotas: `/` início, `/sala/CODE` sala, `/offline` mesa local. O código vai na URL para o link funcionar. */
-export type Route = { name: 'home' } | { name: 'room'; code: string } | { name: 'offline' };
+/** Rotas: `/` início, `/sala/CODE` sala, `/offline` mesa local, `/offline/assistir` quatro bots e a pessoa de fantasma. O código vai na URL para o link funcionar. */
+export type Route = { name: 'home' } | { name: 'room'; code: string } | { name: 'offline'; watch: boolean };
 
 export function parseRoute(pathname: string): Route {
   const sala = pathname.match(/^\/sala\/([A-Za-z0-9]+)\/?$/);
   if (sala) return { name: 'room', code: sala[1].toUpperCase() };
-  if (/^\/offline\/?$/.test(pathname)) return { name: 'offline' };
+  const offline = pathname.match(/^\/offline(\/assistir)?\/?$/);
+  if (offline) return { name: 'offline', watch: !!offline[1] };
   return { name: 'home' };
 }
 

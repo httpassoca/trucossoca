@@ -1,5 +1,5 @@
 import { cardLabel, type GameEvent } from '@truco/rules';
-import { HINTS, translate, type HintBook, type HintKey, type Lang, type Msg } from './i18n';
+import { HINTS, translate, type HintBook, type HintKey, type Lang, type Msg, type Params } from './i18n';
 import type { TableSnapshot } from './table/table';
 
 /** A chamada de cada degrau da escada e a dica que a explica: fica em português nas duas línguas (spec #1, história 48). */
@@ -12,6 +12,17 @@ export const callName = (v: number) => CALLS[v]?.name ?? `${v}!`;
  */
 export interface LogLine { hand: number; trick: number; msg: Msg; hint?: HintKey }
 
+/** A linha que abre uma mão (o log põe um cabeçalho antes dela) e a que fecha uma vaza (o log põe um traço depois). */
+export const opensHand = (l: LogLine) => l.msg.key === 'log.newHand' || l.msg.key === 'log.newHand.dealt' || l.msg.key === 'log.dezHand' || l.msg.key === 'log.ferroHand';
+export const closesTrick = (l: LogLine) => l.msg.key === 'log.trick' || l.msg.key === 'log.trickTie';
+
+/** O cabeçalho da mão que a linha abre, na língua da hora: número, valor e, quando se sabe, quem carteia. */
+export function renderHandHead(lang: Lang, line: LogLine): string {
+  const p = line.msg.params ?? {};
+  const params = { hand: line.hand, value: p.value ?? '', dealer: p.dealer ?? '' };
+  return translate(lang, p.dealer ? 'log.handHead.dealer' : 'log.handHead', params);
+}
+
 /** Evento da mesa → linha do log, com os nomes de quem senta em cada cadeira e das duplas. `hint` = a dica que este evento introduz, se alguma. */
 export function formatEvent(e: GameEvent, snap: TableSnapshot): LogLine | null {
   const g = snap.game, h = g.hand;
@@ -19,10 +30,14 @@ export function formatEvent(e: GameEvent, snap: TableSnapshot): LogLine | null {
   const at = { hand: g.handNo, trick: h ? Math.min(h.played.length, 3) : 1 };
   const line = (msg: Msg, hint?: HintKey): LogLine => (hint ? { ...at, msg, hint } : { ...at, msg });
   switch (e.type) {
-    case 'newHand':
-      if (e.special === 'ferro') return line({ key: 'log.ferroHand' }, 'ferroHand');
-      if (e.special === 'dez') return line({ key: 'log.dezHand', params: { team: teams[e.decider!], value: e.value, name: names[e.mao] } }, 'dezHand');
-      return line({ key: 'log.newHand', params: { name: names[e.mao] } });
+    case 'newHand': {
+      // o valor e o carteador vão nos parâmetros de toda linha de mão nova: o log abre a mão com eles ("Mão 4 · vale 2 · carteia Zé")
+      const dealer = e.dealer === undefined ? undefined : names[e.dealer];
+      const head: Params = dealer ? { value: e.value, dealer } : { value: e.value };
+      if (e.special === 'ferro') return line({ key: 'log.ferroHand', params: head }, 'ferroHand');
+      if (e.special === 'dez') return line({ key: 'log.dezHand', params: { ...head, team: teams[e.decider!], name: names[e.mao] } }, 'dezHand');
+      return line({ key: dealer ? 'log.newHand.dealt' : 'log.newHand', params: { ...head, name: names[e.mao] } });
+    }
     case 'play': {
       // a coberta não tem força: nunca mata nem embucha
       if (e.covered || e.id === null) return line({ key: 'log.playCovered', params: { name: names[e.seat] } });

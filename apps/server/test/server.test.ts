@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import { CLOSE_REPLACED, CLOSE_ROOM_NOT_FOUND, type RoomSnapshot, type ServerMessage } from '@truco/protocol';
-import { teamOf, type Seat } from '@truco/rules';
+import { defaultRules, teamOf, type Seat } from '@truco/rules';
 import { createServer } from '../src/server';
 import { silentLog } from '../src/log';
 
@@ -10,7 +10,7 @@ let base: string;
 const wsUrl = (room: string, token: string) => `${base.replace('http', 'ws')}/ws?room=${room}&token=${token}`;
 
 beforeAll(() => {
-  app = createServer({ port: 0, distDir: '/nonexistent', log: silentLog, pace: { botDelay: 1, handPause: 1 } });
+  app = createServer({ port: 0, distDir: '/nonexistent', log: silentLog, pace: { think: 0.001, handPause: 1, deal: 1 } });
   base = `http://localhost:${app.server.port}`;
 });
 afterAll(() => app.stop());
@@ -39,6 +39,31 @@ describe('servidor', () => {
     const { code } = (await r.json()) as { code: string };
     expect(code).toMatch(/^[A-Z]{4}$/);
     expect(app.rooms.get(code)).toBeDefined();
+  });
+
+  test('POST /api/rooms aceita as regras e o cenário no corpo; o que não passa na validação é ignorado', async () => {
+    const post = async (body?: BodyInit) => (await (await fetch(`${base}/api/rooms`, { method: 'POST', body })).json()) as { code: string };
+    const firstSnapshot = async (code: string, token: string) => {
+      const ws = new WebSocket(wsUrl(code, token));
+      const m = (await nextMessage(ws)) as { snapshot: RoomSnapshot };
+      ws.close();
+      return m.snapshot;
+    };
+    const rules = { ...defaultRules, target: 6, tieLoader: 'lixo', allowCovered: false };
+    const { code } = await post(JSON.stringify({ rules, scenery: 'graveyard' }));
+    const snap = await firstSnapshot(code, 'token-init-aaaa');
+    expect(snap.rules).toEqual({ ...defaultRules, target: 6, allowCovered: false });
+    expect(snap.scenery).toBe('graveyard');
+    // regras inválidas e cenário inexistente: a sala abre do mesmo jeito, com os padrões
+    const bad = await post(JSON.stringify({ rules: { ...defaultRules, target: 0 }, scenery: 'lua' }));
+    const fallback = await firstSnapshot(bad.code, 'token-init-bbbb');
+    expect(fallback.rules).toEqual(defaultRules);
+    expect(fallback.scenery).toBe('bar');
+    // corpo que não é JSON, ou só um dos campos
+    const broken = await post('{');
+    expect(broken.code).toMatch(/^[A-Z]{4}$/);
+    const onlyScenery = await post(JSON.stringify({ scenery: 'graveyard' }));
+    expect((await firstSnapshot(onlyScenery.code, 'token-init-cccc')).scenery).toBe('graveyard');
   });
 
   test('sala desconhecida fecha o socket com o código que o cliente entende', async () => {

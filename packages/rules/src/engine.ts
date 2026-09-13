@@ -20,11 +20,17 @@ export const defaultRules: Rules = {
 };
 
 export const teamOf = (s: Seat): Team => (s % 2) as Team;
+/** A cadeira à direita (a ordem de jogo e de dar as cartas anda para a direita). */
 export const nextSeat = (s: Seat): Seat => ((s + 1) % 4) as Seat;
 export const partnerOf = (s: Seat): Seat => ((s + 2) % 4) as Seat;
+/** Quem corta o baralho: a cadeira à esquerda do carteador. */
+export const cutterOf = (dealer: Seat): Seat => ((dealer + 3) % 4) as Seat;
+/** A ordem em que as cartas são dadas: começa no mão (a direita do carteador) e anda para a direita, o carteador por último. */
+export const dealOrder = (mao: Seat): Seat[] => [0, 1, 2, 3].map((k) => ((mao + k) % 4) as Seat);
 
+/** Sem mão ainda: o carteador da primeira mão é sorteado em `startHand`; até lá os campos só têm um valor qualquer. */
 export function createGame(rules: Rules = defaultRules): GameState {
-  return { rules: { ...rules }, scores: [0, 0], mao: 3, handNo: 0, hand: null, over: false, winner: null, events: [] };
+  return { rules: { ...rules }, scores: [0, 0], dealer: 3, mao: 0, handNo: 0, hand: null, over: false, winner: null, events: [] };
 }
 
 /** Drena a fila de eventos (a apresentação chama depois de cada ação). */
@@ -33,16 +39,20 @@ export function takeEvents(g: GameState) {
 }
 
 /**
- * Começa uma mão nova. `deck` permite injetar o baralho (testes / servidor);
- * `rules` permite aplicar regras alteradas "na próxima mão".
+ * Começa uma mão nova. O carteador da primeira mão da partida é sorteado de `rng` (ou fixado por `dealer`: testes e
+ * servidor); nas seguintes é a cadeira à direita do anterior, ou seja, o mão de uma mão é o carteador da seguinte.
+ * As cartas saem uma por vez, do mão para a direita, até cada cadeira ter três (`dealOrder`). `deck` permite injetar
+ * o baralho (testes / servidor); `rules` permite aplicar regras alteradas "na próxima mão".
  */
-export function startHand(g: GameState, rng: Rng, opts: { deck?: CardId[]; rules?: Rules } = {}): HandState {
+export function startHand(g: GameState, rng: Rng, opts: { deck?: CardId[]; rules?: Rules; dealer?: Seat } = {}): HandState {
   if (opts.rules) g.rules = { ...opts.rules };
   const R = g.rules;
-  g.mao = nextSeat(g.mao); g.handNo++;
+  g.dealer = opts.dealer ?? (g.handNo === 0 ? (Math.floor(rng() * 4) as Seat) : nextSeat(g.dealer));
+  g.mao = nextSeat(g.dealer); g.handNo++;
   const deck = opts.deck ? [...opts.deck] : shuffle(makeDeck(), rng);
   const cards: CardId[][] = [[], [], [], []];
-  for (let i = 0; i < 3; i++) for (let s = 0; s < 4; s++) cards[s].push(deck.pop()!);
+  const order = dealOrder(g.mao);
+  for (let i = 0; i < 3; i++) for (const s of order) cards[s].push(deck.pop()!);
   const h: HandState = {
     cards, stock: deck, played: [[]], results: [], order: 0,
     value: R.ladder[0], ladderIdx: 0, pending: null, lastRaiseTeam: null,
@@ -56,8 +66,18 @@ export function startHand(g: GameState, rng: Rng, opts: { deck?: CardId[]; rules
     h.revealPartner = R.maoDeDezPeek;
   }
   g.hand = h;
-  g.events.push({ type: 'newHand', mao: g.mao, special: h.special, value: h.value, decider: h.decider });
+  g.events.push({ type: 'newHand', mao: g.mao, dealer: g.dealer, cutter: cutterOf(g.dealer), special: h.special, value: h.value, decider: h.decider });
   return h;
+}
+
+/**
+ * Nada aconteceu desde que as cartas foram dadas: nenhuma carta na mesa, nenhum truco pedido ou aceito, e a mão de
+ * dez ainda por decidir. É quando a mesa ainda está embaralhando, cortando e dando na tela de todo mundo.
+ */
+export function handUntouched(g: GameReadable): boolean {
+  const h = g.hand; if (!h) return false;
+  if (h.special === 'dez') return h.phase === 'dezDecision';
+  return h.phase === 'play' && h.played[0].length === 0 && h.ladderIdx === 0 && h.lastRaiseTeam === null;
 }
 
 export function canRaise(g: GameReadable, seat: Seat): boolean {

@@ -29,6 +29,15 @@ export function chooseBotResponse(g: GameState, seat: Seat, rng: Rng): RespondAc
   return 'decline';
 }
 
+/**
+ * Quanto um bot "pensa" antes de agir, em ms, para parecer gente: jogar uma carta leva de 1 a 4 s, puxado para 1-2 s;
+ * responder um truco ou decidir a mão de dez leva de 2 a 4 s, parelho.
+ */
+export function thinkTime(rng: Rng, kind: 'play' | 'decision'): number {
+  const r = rng();
+  return kind === 'play' ? 1000 + 3000 * r * r : 2000 + 2000 * r;
+}
+
 export function chooseBotDez(g: GameState, rng: Rng): DezAction {
   const h = g.hand!;
   const seats: Seat[] = h.decider === 0 ? [0, 2] : [1, 3];

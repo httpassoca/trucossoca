@@ -1,18 +1,22 @@
-import { DEFAULT_SCENERY, DEFAULT_TEAM_NAMES, IDLE_HANDOFF, NICKNAME_MAX, TEAM_NAME_MAX, type ActionError, type ClientMessage, type RoomSnapshot, type SceneryId, type ServerMessage } from '@truco/protocol';
+import { DEAL_MS, DEFAULT_SCENERY, DEFAULT_TEAM_NAMES, IDLE_HANDOFF, NICKNAME_MAX, TEAM_NAME_MAX, type ActionError, type ClientMessage, type RoomSnapshot, type SceneryId, type ServerMessage } from '@truco/protocol';
 import {
-  chooseBotDez, chooseBotPlay, chooseBotResponse, createGame, decideDez, defaultRules, eventsFor, playCard, raise, respond, responderSeat,
-  startHand, takeEvents, teamOf, viewFor, type CardId, type GameEvent, type GameState, type Perspective, type Rng, type Rules, type Seat, type Team,
+  chooseBotDez, chooseBotPlay, chooseBotResponse, createGame, decideDez, defaultRules, eventsFor, handUntouched, playCard, raise, respond, responderSeat,
+  startHand, takeEvents, teamOf, thinkTime, viewFor, type CardId, type GameEvent, type GameState, type Perspective, type Rng, type Rules, type Seat, type Team,
 } from '@truco/rules';
 
 /** A sala morre depois deste tempo sem ação de sala ou de jogo. */
 export const ROOM_TTL = 10 * 60_000;
 /** Quem cai tem este tempo para voltar com o mesmo token: no lobby, antes de sair da lista; na partida, antes de um bot jogar pela cadeira. */
 export const DISCONNECT_GRACE = 20_000;
-/** Ritmo da mesa: quanto um bot "pensa" antes de jogar e a pausa entre o fim de uma mão e a seguinte, ms. */
-export interface RoomPace { botDelay: number; handPause: number }
-export const DEFAULT_PACE: RoomPace = { botDelay: 800, handPause: 2200 };
-/** Bots demoram um pouco mais para responder truco ou decidir a mão de dez. */
-export const BOT_DECISION_EXTRA = 300;
+/**
+ * Ritmo da mesa: `handPause` é a pausa entre o fim de uma mão e a seguinte, ms; `think` multiplica o que um bot
+ * "pensa" (`thinkTime`, sorteado do rng: 1 em produção, os testes apressam); `deal` é quanto a primeira ação de
+ * um bot em cada mão espera pela coreografia de dar as cartas (`DEAL_MS` em produção).
+ */
+export interface RoomPace { handPause: number; think: number; deal: number }
+export const DEFAULT_PACE: RoomPace = { handPause: 2200, think: 1, deal: DEAL_MS };
+/** O que uma sala nasce com, além dos padrões: as regras e o cenário pedidos ao abrir (`POST /api/rooms`). */
+export interface RoomInit { rules?: Rules; scenery?: SceneryId }
 const FALLBACK_NICKNAME = 'Alguém';
 /** Apelidos dos bots, na ordem; pula os que já estão na sala. */
 const BOT_NAMES = ['Tião', 'Nena', 'Bastião', 'Cida', 'Dito', 'Zefa'];
@@ -94,14 +98,19 @@ export type RoomEvent =
 
 export interface RoomOutput { state: RoomState; out: Outgoing[]; events: RoomEvent[] }
 
-/** O que `step` sorteia: `rng` embaralha, semeia onde as cartas caem e decide os bots; `deck` fixa o baralho de uma mão (testes). */
-export interface StepOptions { rng?: Rng; deck?: (handNo: number) => CardId[] | undefined }
+/**
+ * O que `step` sorteia: `rng` embaralha, sorteia o carteador da primeira mão, semeia onde as cartas caem, decide os
+ * bots e quanto pensam; `deck` fixa o baralho de uma mão e `dealer` o carteador da primeira mão de cada partida (testes).
+ */
+export interface StepOptions { rng?: Rng; deck?: (handNo: number) => CardId[] | undefined; dealer?: Seat }
 
-export function createRoom(code: string, now: number, pace: RoomPace = DEFAULT_PACE): RoomState {
+/** `pace` completa os padrões (os testes só apressam o que precisam); `init` são as regras e o cenário pedidos ao abrir. */
+export function createRoom(code: string, now: number, pace: Partial<RoomPace> = {}, init: RoomInit = {}): RoomState {
   return {
     code, phase: 'lobby', createdAt: now, lastActivity: now, members: [], visitors: [], nextId: 1,
     timers: [{ kind: 'death', at: now + ROOM_TTL }],
-    teams: [...DEFAULT_TEAM_NAMES], rules: copyRules(defaultRules), ghostsSeeCards: true, scenery: DEFAULT_SCENERY, pace: { ...pace }, game: null,
+    teams: [...DEFAULT_TEAM_NAMES], rules: copyRules(init.rules ?? defaultRules), ghostsSeeCards: true, scenery: init.scenery ?? DEFAULT_SCENERY,
+    pace: { ...DEFAULT_PACE, ...pace }, game: null,
   };
 }
 
@@ -130,24 +139,28 @@ export function step(state: RoomState, input: RoomInput, now: number, opts: Step
   const takeover = (m: RoomMember, cause: 'dropped' | 'idle', by?: string) => {
     m.botControlled = true;
     events.push({ type: 'botTakeover', id: m.id, nickname: m.nickname, seat: m.seat!, cause, ...(by === undefined ? {} : { by }) });
-    scheduleGame(s, now);
+    scheduleGame(s, now, rng);
   };
   /** a cadeira volta a ser de `m`: o bot para (o timer dele cai) e o relógio de parada recomeça */
   const reclaim = (m: RoomMember) => {
     m.botControlled = false;
     m.lastActivity = now;
     events.push({ type: 'reclaimed', id: m.id, nickname: m.nickname, seat: m.seat! });
-    scheduleGame(s, now);
+    scheduleGame(s, now, rng);
   };
   /** depois de qualquer mexida na partida: drena os eventos, avisa todo mundo e pede o próximo timer da mesa */
   const afterAction = () => {
     const g = s.game!;
     const gameEvents = takeEvents(g);
     if (gameEvents.some((e) => e.type === 'gameOver')) events.push({ type: 'gameOver', winner: g.winner!, scores: `${g.scores[0]}x${g.scores[1]}` });
-    scheduleGame(s, now);
+    scheduleGame(s, now, rng);
     broadcast(gameEvents);
   };
-  const newHand = () => startHand(s.game!, rng, { deck: opts.deck?.(s.game!.handNo + 1) });
+  /** a mão seguinte; na primeira de cada partida, o carteador fixado pelos testes, se houver */
+  const newHand = () => {
+    const g = s.game!;
+    startHand(g, rng, { deck: opts.deck?.(g.handNo + 1), ...(g.handNo === 0 && opts.dealer !== undefined ? { dealer: opts.dealer } : {}) });
+  };
   const touch = (m?: RoomMember) => {
     s.lastActivity = now;
     if (m) m.lastActivity = now;
@@ -255,7 +268,7 @@ export function step(state: RoomState, input: RoomInput, now: number, opts: Step
           for (const o of s.members) o.botControlled = false; // no lobby ninguém joga por ninguém
           s.game = null;
           s.phase = 'lobby';
-          scheduleGame(s, now);
+          scheduleGame(s, now, rng);
           // quem caiu durante a partida segurou a cadeira até aqui; agora tem a tolerância de sempre para voltar
           for (const o of s.members) if (!o.connected && !s.timers.some((t) => t.kind === 'drop' && t.token === o.token)) s.timers.push({ kind: 'drop', token: o.token!, at: now + DISCONNECT_GRACE });
           touch(m);
@@ -381,9 +394,11 @@ function botAct(g: GameState, seat: Seat, rng: Rng) {
 
 /**
  * Troca os timers da mesa pelo que a situação pede agora: a mão seguinte, a vez de um bot, ou nada (gente ou fim de jogo).
- * A pausa entre mãos, uma vez marcada, não recomeça (uma tomada ou retomada no meio dela não a adia).
+ * A pausa entre mãos, uma vez marcada, não recomeça (uma tomada ou retomada no meio dela não a adia). O bot "pensa"
+ * um tempo sorteado (`thinkTime`, vezes `pace.think`), e a primeira ação de uma mão ainda espera a coreografia de
+ * dar as cartas (`pace.deal`): nenhuma tela a vê agir antes de ter as cartas na mão.
  */
-function scheduleGame(s: RoomState, now: number) {
+function scheduleGame(s: RoomState, now: number, rng: Rng) {
   s.timers = s.timers.filter((t) => t.kind !== 'bot');
   const g = s.game, h = g?.hand;
   const pausing = h?.phase === 'over' && s.phase === 'playing';
@@ -395,7 +410,8 @@ function scheduleGame(s: RoomState, now: number) {
   }
   const seat = botToAct(s);
   if (seat === null) return;
-  s.timers.push({ kind: 'bot', seat, at: now + s.pace.botDelay + (h.phase === 'play' ? 0 : BOT_DECISION_EXTRA) });
+  const think = Math.round(thinkTime(rng, h.phase === 'play' ? 'play' : 'decision') * s.pace.think);
+  s.timers.push({ kind: 'bot', seat, at: now + (handUntouched(g) ? s.pace.deal : 0) + think });
 }
 
 /** Pelo menos uma pessoa sentada, no máximo duas por dupla e uma por cadeira. */

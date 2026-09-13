@@ -41,6 +41,8 @@ export function myTurn(snap: TableSnapshot, view: Seat) {
   return !!h && h.phase === 'play' && snap.seat === view && h.turn === view;
 }
 export const mayRaise = (snap: TableSnapshot, view: Seat) => snap.seat === view && snap.canRaise;
+/** Respondendo a um truco, ainda há um degrau acima para pedir mais. */
+export const canRaiseMore = (snap: TableSnapshot) => { const q = snap.game.hand?.pending; return !!q && q.toIdx + 1 < snap.game.rules.ladder.length; };
 
 /** O que a mesa pergunta a esta pessoa agora, derivado do snapshot. A um fantasma, nada: nem o fim de jogo (o placar já diz). */
 export function promptOf(snap: TableSnapshot): Prompt {
@@ -55,7 +57,7 @@ export function promptOf(snap: TableSnapshot): Prompt {
 
 export function promptAct(act: string) {
   const p = promptOf(live.snap); if (!p) return;
-  if (p.kind === 'respond') live.table?.respond(act as RespondAction);
+  if (p.kind === 'respond') { if (act === 'raise' && !canRaiseMore(live.snap)) return; live.table?.respond(act as RespondAction); }
   else if (p.kind === 'dez') live.table?.decideDez(act as DezAction);
   else if (act === 'new') newGame();
 }

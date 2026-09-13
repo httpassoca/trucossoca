@@ -87,7 +87,8 @@ export type RespondAction = 'accept' | 'decline' | 'raise';
 export type DezAction = 'play' | 'run';
 
 export type GameEvent =
-  | { type: 'newHand'; mao: Seat; special: Special; value: number; decider: Team | null }
+  /** `dealer` = o carteador; `cutter` = quem corta (à esquerda dele); `mao` = quem abre (à direita dele) */
+  | { type: 'newHand'; mao: Seat; dealer: Seat; cutter: Seat; special: Special; value: number; decider: Team | null }
   /** `id` null = coberta de outra cadeira (ver `eventsFor`); `seed` = de onde a carta cai, igual em toda tela */
   | { type: 'play'; seat: Seat; id: CardId | null; covered: boolean; kind: PlayKind; seed: number }
   | { type: 'raise'; seat: Seat; to: number }
@@ -100,6 +101,9 @@ export type GameEvent =
 export interface GameCore {
   rules: Rules;
   scores: [number, number];
+  /** o carteador da mão em curso: sorteado na primeira mão da partida, depois passa para a direita a cada mão */
+  dealer: Seat;
+  /** quem abre a mão: sempre a cadeira à direita do carteador (`nextSeat(dealer)`), guardada por conveniência */
   mao: Seat;
   handNo: number;
   over: boolean;
