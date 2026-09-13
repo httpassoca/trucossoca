@@ -102,7 +102,7 @@ export class LocalTable implements Table {
   private acting(): Seat | -1 {
     const h = this.game.hand;
     if (!h || this.game.over || h.phase === 'over') return -1;
-    if (h.phase === 'dezDecision') return h.decider! as Seat;
+    if (h.phase === 'dezDecision') return h.decider === 0 ? 0 : 1; // a primeira cadeira da dupla que decide
     if (h.phase === 'respond') {
       const r = responderSeat(this.game);
       return this.settings.bots && teamOf(r) === 0 ? 0 : r;
@@ -119,7 +119,8 @@ export class LocalTable implements Table {
       return;
     }
     const a = this.acting() as Seat;
-    if (this.humanControls(a)) { if (!this.settings.bots) this.seat = a; return; }
+    this.seat = this.settings.bots ? 0 : a; // sem bots a pessoa segue quem age; com bots ela é sempre a 0
+    if (this.humanControls(a)) return;
     const delay = h.phase === 'play' ? this.settings.botDelay : this.settings.botDelay + DECISION_EXTRA;
     this.timer = this.clock.setTimeout(() => this.botAct(a), delay);
   }

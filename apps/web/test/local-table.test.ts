@@ -147,3 +147,27 @@ describe('LocalTable', () => {
     expect(table.snapshot.game.hand!.played[1][0].covered).toBe(true);
   });
 });
+
+describe('LocalTable: configuração ao vivo', () => {
+  test('ligar os bots de volta devolve a pessoa à cadeira 0', () => {
+    const { table, settings, clock } = setup(1, { bots: false });
+    table.newGame();
+    table.play(table.snapshot.game.hand!.cards[0][0]);
+    expect(table.snapshot.seat).toBe(1);
+
+    settings.bots = true;
+    table.newGame();
+    expect(table.snapshot.seat).toBe(0);
+    expect(table.snapshot.acting).toBe(0);
+    table.play(table.snapshot.game.hand!.cards[0][0]);
+    expect(table.snapshot.game.hand!.played[0]).toHaveLength(1);
+    expect(clock.pending).toBe(1); // bot da cadeira 1 agendado
+  });
+
+  test('regras chegam como um objeto novo a cada mão (snapshot não compartilha a escada com a configuração)', () => {
+    const { table, settings } = setup(1);
+    table.newGame();
+    expect(table.snapshot.game.rules.ladder).not.toBe(settings.rules.ladder);
+    expect(table.snapshot.game.rules.ladder).toEqual(settings.rules.ladder);
+  });
+});

@@ -20,8 +20,15 @@ export const ui = $state({
   botDelay: 800,
 });
 
-/** A mesa por trás da interface (ADR 0003). Offline: motor e bots no navegador; `ui` é lida ao vivo como configuração. */
-export const table: Table = new LocalTable(ui);
+/**
+ * A mesa por trás da interface (ADR 0003). Offline: motor e bots no navegador, lendo a configuração de `ui` ao vivo.
+ * As regras saem do proxy do `$state` como objeto plano: o motor guarda e clona o que recebe.
+ */
+export const table: Table = new LocalTable({
+  get rules() { return $state.snapshot(ui.rules); },
+  get bots() { return ui.bots; },
+  get botDelay() { return ui.botDelay; },
+});
 
 /** Espelho reativo do snapshot da mesa: trocado inteiro a cada mudança, nunca mutado. */
 class Live { snap = $state.raw<TableSnapshot>(table.snapshot); }
