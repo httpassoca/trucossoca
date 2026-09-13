@@ -64,9 +64,9 @@ describe('host: presença', () => {
     host.connect(b); say(host, b, { type: 'join', nickname: 'Dita' });
     host.connect(c); // visitante sem apelido: também vê a mesa chegar
     const activity = host.state.lastActivity;
-    for (let i = 1; i <= 4; i++) say(host, a, { type: 'presence', presence: { x: i, z: 0, yaw: 0, pitch: 0 } });
+    for (let i = 1; i <= 4; i++) say(host, a, { type: 'presence', presence: { x: i, y: 0, z: 0, yaw: 0, pitch: 0 } });
     // a primeira sai na hora; as do meio caem; a última sai quando a janela abre
-    expect(presences(b)).toEqual([{ type: 'presence', member: 'm1', presence: { x: 1, z: 0, yaw: 0, pitch: 0 } }]);
+    expect(presences(b)).toEqual([{ type: 'presence', member: 'm1', presence: { x: 1, y: 0, z: 0, yaw: 0, pitch: 0 } }]);
     expect(presences(a)).toEqual([]);
     await sleep(60);
     expect(presences(b).map((m) => (m as { presence: { x: number } }).presence.x)).toEqual([1, 4]);
@@ -81,7 +81,7 @@ describe('host: presença', () => {
     const a = fakeSocket('token-a'), v = fakeSocket('token-v');
     host.connect(a); say(host, a, { type: 'join', nickname: 'Zé' });
     host.connect(v);
-    say(host, v, { type: 'presence', presence: { x: 1, z: 0, yaw: 0, pitch: 0 } });
+    say(host, v, { type: 'presence', presence: { x: 1, y: 0, z: 0, yaw: 0, pitch: 0 } });
     expect(presences(a)).toEqual([]);
     host.dispose();
   });

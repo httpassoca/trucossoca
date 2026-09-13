@@ -145,3 +145,16 @@ describe('LocalTable: configuração ao vivo', () => {
     expect(table.snapshot.game.rules.ladder).toEqual(settings.rules.ladder);
   });
 });
+
+describe('perspectiva', () => {
+  test('com bots, a pessoa só conhece as próprias cartas; sem bots (debug), todas', () => {
+    const { table } = setup(1);
+    table.newGame();
+    const h = table.snapshot.game.hand!;
+    expect(h.cards[0].every((c) => c !== null)).toBe(true);
+    for (const s of [1, 2, 3] as const) expect(h.cards[s].every((c) => c === null)).toBe(true);
+    const all = setup(1, { bots: false }).table;
+    all.newGame();
+    expect(all.snapshot.game.hand!.cards.every((held) => held.every((c) => c !== null))).toBe(true);
+  });
+});

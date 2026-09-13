@@ -1,7 +1,7 @@
 import type { CardId, DezAction, GameEvent, RespondAction, Seat } from '@truco/rules';
 import { callName, formatEvent, withHint } from './format';
 import { hints, i18n, t } from './i18n.svelte';
-import { resetLook, spawnSeat, standBehind } from './scene/camera';
+import { resetLook, sitDown, spawnSeat, stance, standBehind } from './scene/camera';
 import { resetLayout } from './scene/layout';
 import { live, ui, type Prompt } from './state.svelte';
 import type { Table, TableSnapshot } from './table/table';
@@ -9,6 +9,7 @@ import type { Table, TableSnapshot } from './table/table';
 /** Pontes para a cena 3D (registradas pelo World). */
 export const bus = {
   say: (_seat: Seat, _text: string) => {},
+  react: (_events: GameEvent[]) => {},
   lastPlay: { id: null as CardId | null, t: 0 },
 };
 
@@ -20,13 +21,19 @@ export function attachTable(table: Table, opts: { menuOpen: boolean }) {
   resetLayout();
   live.snap = table.snapshot;
   // fantasma nasce de pé atrás de uma cadeira (cada fantasma novo atrás da seguinte); quem senta olha da própria
+  sitDown();
   setView(table.snapshot.seat ?? spawnSeat(table.snapshot.ghosts.length));
   const off = table.subscribe(onTableChange);
   return () => { off(); if (live.table === table) live.table = null; };
 }
 
 /** Olhar da cadeira `s` (quem senta) ou ficar de pé atrás dela (fantasma). */
-export function setView(s: Seat) { ui.view = s; ui.sel = 0; if (live.snap.seat === null) standBehind(s); else resetLook(); }
+export function setView(s: Seat) { ui.view = s; ui.sel = 0; if (live.snap.seat === null) standBehind(s); else if (!stance.standing) resetLook(); }
+
+/** A câmera anda solta: fantasma, ou pessoa sentada que se levantou. */
+export const freeCamera = (snap: TableSnapshot) => snap.seat === null || stance.standing;
+/** Tab troca de cadeira: fantasma (fica atrás da próxima) e mesa offline sem bots (a pessoa joga por todas). */
+export const canCycleSeats = (snap: TableSnapshot) => snap.seat === null || (snap.restart === 'newGame' && !ui.bots);
 
 /** É a vez desta pessoa jogar uma carta pela cadeira que está vendo. */
 export function myTurn(snap: TableSnapshot, view: Seat) {
@@ -67,7 +74,8 @@ export function onTableChange(snap: TableSnapshot, events: GameEvent[]) {
     if (e.type === 'play') bus.lastPlay = { id: e.id, t: performance.now() };
     if (e.type === 'newHand') ui.sel = 0;
   }
-  if (snap.seat !== null && snap.seat !== prev.seat) setView(snap.seat);
+  if (events.length) bus.react(events);
+  if (snap.seat !== null && snap.seat !== prev.seat) { sitDown(); setView(snap.seat); }
   const held = snap.game.hand?.cards[ui.view].length ?? 0;
   ui.sel = Math.max(0, Math.min(ui.sel, held - 1));
 }

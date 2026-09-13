@@ -367,7 +367,7 @@ describe('RemoteTable: fantasmas', () => {
     last().receive({ type: 'snapshot', snapshot });
     const got: unknown[] = [];
     table.subscribe((s, ev) => got.push([s, ev]));
-    const p = { x: 1, z: -2, yaw: 0.5, pitch: -0.2 };
+    const p = { x: 1, y: 0, z: -2, yaw: 0.5, pitch: -0.2 };
     last().receive({ type: 'presence', member: 'm6', presence: p });
     last().receive({ type: 'presence', member: 'm2', presence: { ...p, x: 9 } });
     expect(table.presenceOf('m6')).toEqual(p);
@@ -384,8 +384,8 @@ describe('RemoteTable: fantasmas', () => {
   test('a própria presença vira mensagem do protocolo', () => {
     const { table, last } = setup();
     table.connect(); last().open();
-    table.setPresence({ x: 1, z: 2, yaw: 3, pitch: 0 });
-    expect(last().sent).toEqual([{ type: 'presence', presence: { x: 1, z: 2, yaw: 3, pitch: 0 } }]);
+    table.setPresence({ x: 1, y: 0, z: 2, yaw: 3, pitch: 0 });
+    expect(last().sent).toEqual([{ type: 'presence', presence: { x: 1, y: 0, z: 2, yaw: 3, pitch: 0 } }]);
   });
 
   test('sentar no lugar de um bot: entre mãos vai na hora; no meio da mão fica como intenção e vai quando a mão acabar', () => {

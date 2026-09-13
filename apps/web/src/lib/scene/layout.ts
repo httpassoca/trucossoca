@@ -1,6 +1,6 @@
 import { makeDeck, strength, teamOf, type CardId, type GameView, type HandView, type PlayView, type Seat } from '@truco/rules';
 import * as THREE from 'three';
-import { seatAngle, seatDir, seatRight, TABLE_TOP, type CardGroup } from './builders';
+import { seatAngle, seatDir, seatRight, showFace, TABLE_TOP, type CardGroup } from './builders';
 import { throwSpot, type Spot } from './throw';
 
 const _q = new THREE.Quaternion(), _e = new THREE.Euler(), Y = new THREE.Vector3(0, 1, 0);
@@ -99,6 +99,7 @@ export function layoutCards(g: GameView, ui: LayoutUi, cards: Record<CardId, Car
     const peek = h.revealPartner && teamOf(s) === h.decider && s === (ui.view + 2) % 4;
     held.forEach((slot, i) => {
       const id = slot ?? slots.get(`h${s}:${i}`); if (!id) return;
+      showFace(cards[id], !!slot);
       const lx = (i - (held.length - 1) / 2) * 0.21;
       const lift = s === ui.view && ui.myTurn && i === ui.sel ? 0.045 : 0;
       cards[id].userData.tb = 1;
@@ -110,13 +111,14 @@ export function layoutCards(g: GameView, ui: LayoutUi, cards: Record<CardId, Car
   h.played.forEach((trick, t) => trick.forEach((p) => {
     const id = p.id ?? slots.get(`p${p.order}`); if (!id) return;
     const card = cards[id]; const sp = spotFor(g, p, trick);
+    showFace(card, !!p.id);
     card.userData.tp.set(sp.x, TABLE_TOP + 0.002 + p.order * 0.0022, sp.z);
     card.userData.tq.setFromAxisAngle(Y, sp.yaw).multiply(_q.setFromEuler(_e.set(p.covered ? Math.PI / 2 : -Math.PI / 2, 0, 0, 'YXZ')));
     card.userData.tb = t === last ? 1 : 0.5;
   }));
   for (let i = 0; i < h.stock; i++) {
     const id = slots.get(`k${i}`); if (!id) break;
-    const card = cards[id]; card.userData.tb = 1;
+    const card = cards[id]; card.userData.tb = 1; showFace(card, false);
     card.userData.tp.set(0.62, TABLE_TOP + 0.002 + i * 0.0015, -0.62);
     card.userData.tq.setFromEuler(_e.set(Math.PI / 2, 0, 0.4, 'XYZ'));
   }

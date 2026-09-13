@@ -10,6 +10,8 @@ export const ui = $state({
   sel: 0,                 // índice da carta escolhida entre as cartas da cadeira atual
   menuOpen: true,
   locked: false,          // pointer lock ativo
+  standing: false,        // espelho reativo da postura (camera.ts): a pessoa sentada se levantou
+  nearSeat: false,        // de pé e perto da própria cadeira: Shift senta
   log: [] as LogLine[],
   rules: { ...defaultRules } as Rules, // offline: aplicadas na próxima mão
   bots: true,
