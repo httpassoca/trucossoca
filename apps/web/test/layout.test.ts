@@ -75,8 +75,10 @@ describe('poses das cartas na mão', () => {
   test('levantar as cartas de uma cadeira só move as dela', () => {
     resetLayout();
     const cards = buildCards(), g = hand(3, 'all');
+    // o layout carimba os caminhos com o relógio de verdade (`performance.now`): a simulação parte dele, não de zero
     layoutCards(g, { view: 0, sel: 0, myTurn: false, lifted: [false, false, false, false], dealing: false }, cards);
-    run(cards, 0, 2000);
+    run(cards, performance.now(), 2000);
+    expect(Object.values(cards).some(isMoving)).toBe(false);
     layoutCards(g, { view: 0, sel: 0, myTurn: false, lifted: [false, true, false, false], dealing: false }, cards);
     const moving = Object.values(cards).filter(isMoving).map((c) => c.userData.id);
     expect(moving.sort()).toEqual([...g.hand!.cards[1]].sort());
