@@ -19,8 +19,8 @@ describe('host: silêncio no socket', () => {
   test('quem fica em silêncio pelo tempo limite é derrubado como se tivesse caído; ping mantém vivo', async () => {
     const host = new RoomHost('ABCD', silentLog, () => {}, { silence: 40 });
     const a = fakeSocket('token-a'), b = fakeSocket('token-b');
+    const heardAt = Date.now(); // antes do último sinal de Zé, senão o relógio do host pode ficar 1 ms atrás deste
     host.connect(a); say(host, a, { type: 'join', nickname: 'Zé' });
-    const heardAt = Date.now();
     host.connect(b); say(host, b, { type: 'join', nickname: 'Dita' });
     await sleep(25);
     say(host, b, { type: 'ping' });
